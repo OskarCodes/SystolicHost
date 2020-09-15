@@ -18,7 +18,7 @@ y_vals = np.empty([6, DATA_LIM])
 index = 0
 """plt.style.use('fivethirtyeight')
 plt.tight_layout()
-plt.ion()
+plt.ion() 
 plt.show()"""
 
 bool1 = False
