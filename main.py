@@ -6,13 +6,7 @@ import serial
 import ecg_plot
 import numpy as np
 from tqdm import tqdm
-
 import csv
-
-import random
-from itertools import count
-
-from matplotlib.animation import FuncAnimation
 
 DATA_LIM = 500
 x_vals = range(DATA_LIM)
