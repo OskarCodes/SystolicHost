@@ -273,6 +273,8 @@ class MyWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super(MyWindow, self).__init__()
         uic.loadUi("mainwindow.ui", self)
+        self.bandwidthline.setReadOnly(True)
+        self.ODRline.setReadOnly(True)
         self.startButton.clicked.connect(self.startclick)
         self.uploadButton.clicked.connect(self.upload)
         self.stopButton.clicked.connect(self.stop)
@@ -335,8 +337,8 @@ class MyWindow(QtWidgets.QMainWindow):
         self.R3 = R3_to_Hex(float(self.R3R.currentText()))
 
         self.ADCMax, self.ODR, self.bandwidth = getBandwidth(self.R2R.currentText(), self.R3R.currentText())
-        bw_label = "Bandwidth = %s Hz" % self.bandwidth
-        self.bandwidthlabel.setText(bw_label)
+        self.bandwidthline.setText("%s Hz" % self.bandwidth)
+        self.ODRline.setText("%s Hz" % self.ODR)
 
     def upload(self):
         self.progressBar.setValue(0)
