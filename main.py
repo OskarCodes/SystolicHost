@@ -7,6 +7,8 @@ import ecg_plot
 import numpy as np
 from tqdm import tqdm
 
+import csv
+
 import random
 from itertools import count
 
@@ -16,10 +18,6 @@ DATA_LIM = 500
 x_vals = range(DATA_LIM)
 y_vals = np.empty([6, DATA_LIM])
 index = 0
-"""plt.style.use('fivethirtyeight')
-plt.tight_layout()
-plt.ion() 
-plt.show()"""
 
 bool1 = False
 
@@ -45,31 +43,43 @@ def bin_to_hex(bin):
 
 def R2_to_Hex(x):
     if x == 4:
+        R2 = '4'
         return bin_to_hex('00000001')
     elif x == 5:
+        R2 = '5'
         return bin_to_hex('00000010')
     elif x == 6:
+        R2 = '6'
         return bin_to_hex('00000100')
     elif x == 8:
+        R2 = '8'
         return bin_to_hex('00001000')
 
 
 def R3_to_Hex(x):
     if x == 4:
+        R3 = '4'
         return bin_to_hex('00000001')
     elif x == 6:
+        R3 = '6'
         return bin_to_hex('00000010')
     elif x == 8:
+        R3 = '8'
         return bin_to_hex('00000100')
     elif x == 12:
+        R3 = '12'
         return bin_to_hex('00001000')
     elif x == 16:
+        R3 = '16'
         return bin_to_hex('00010000')
     elif x == 32:
+        R3 = '32'
         return bin_to_hex('00100000')
     elif x == 64:
+        R3 = '64'
         return bin_to_hex('01000000')
     elif x == 128:
+        R3 = '128'
         return bin_to_hex('10000000')
 
 
@@ -174,9 +184,9 @@ def hasNumbers(inputString):
     return any(char.isdigit() for char in inputString)
 
 
-def adcvoltage(rawdata):
+def adcvoltage(rawdata, adcmax=0x800000):
     try:
-        rawdata = (float(rawdata) / 0x800000)
+        rawdata = (float(rawdata) / adcmax)
     except:
         return 0
     rawdata = rawdata - (1 / 2)
@@ -185,7 +195,7 @@ def adcvoltage(rawdata):
     return rawdata
 
 
-def ecg_read():
+def ecg_read(ADCMax, bandwidth):
     global y_vals
     global stop
     global index
@@ -210,9 +220,9 @@ def ecg_read():
                 except:
                     break
                 # y_vals[index] = data[0]
-                data[0] = adcvoltage(data[0])
-                data[1] = adcvoltage(data[1])
-                data[2] = adcvoltage(data[2])
+                data[0] = adcvoltage(ADCMax)
+                data[1] = adcvoltage(ADCMax)
+                data[2] = adcvoltage(ADCMax)
                 # print("Lead 1: %s, Lead 2: %s, Lead 3: %s" % (data[0], data[1], data[2]))
                 # data = data - 649
                 y_vals[0][i] = data[0]
@@ -239,18 +249,24 @@ def ecg_read():
         y_vals[3][i] = y_vals[3][i] - average_aVR
         y_vals[4][i] = y_vals[4][i] - average_aVL
         y_vals[5][i] = y_vals[5][i] - average_aVF
-    ecg_plot.plot(y_vals, sample_rate=150, title='ECG 6 Lead', columns=2)
+    ecg_plot.plot(y_vals, sample_rate=bandwidth, title='ECG 6 Lead', columns=2)
     ecg_plot.show()
     return 0
 
 
-"""try:
-    thread = threading.Thread(target=ecg_read, args=(ser,))
-    thread.start()
-except (KeyboardInterrupt, SystemExit):
-    ser.close()
-    sys.exit()
-"""
+def getBandwidth(R2, R3):
+    print("Getting bandwidth")
+    # Using csv file somewhat as a lookup table as using such a large if statement would be painful
+    # row[0] = R2, row[1] = R3
+    with open('sampling.csv', newline='') as parameters:
+        read = csv.reader(parameters, delimiter=',', quotechar='"')
+        for row in read:
+            if row[0] == R2 and row[1] == R3:
+                ADCMax = row[2]
+                ODR = row[3]
+                BW = row[4]
+                return ADCMax, ODR, BW
+    return 0, 0, 0
 
 
 class MyWindow(QtWidgets.QMainWindow):
@@ -260,6 +276,29 @@ class MyWindow(QtWidgets.QMainWindow):
         self.startButton.clicked.connect(self.startclick)
         self.uploadButton.clicked.connect(self.upload)
         self.stopButton.clicked.connect(self.stop)
+        self.saveButton.clicked.connect(self.save)
+        # self.mouseReleaseEvent = self.bandwidth
+        self.ADCMax = ''
+        self.ODR = ''
+        self.bandwidth = ''
+
+        self.CMBand = False
+        self.CMDrive = 0
+        self.CM = 0
+        self.RLDToggle = False
+        self.RLDBand = ''
+        self.RLDDrive = ''
+        self.RLD = ''
+        self.AFECH1 = ''
+        self.AFECH2 = ''
+        self.AFECH3 = ''
+        self.AFE = ''
+        self.FiltC1 = ''
+        self.FiltC2 = ''
+        self.FiltC3 = ''
+        self.Filt = ''
+        self.R2 = ''
+        self.R3 = ''
 
     def stop(self):
         sendData(CONFIG_Reg, bin_to_hex('00000000'))
@@ -269,53 +308,56 @@ class MyWindow(QtWidgets.QMainWindow):
         global bool1
         self.tabWidget.setTabEnabled(1, False)
         bool1 = not bool1
-        ecg_read()
+        ecg_read(int(self.ADCMax, 16), int(self.bandwidth))
         self.tabWidget.setTabEnabled(1, True)
+
+    def save(self):
+        self.CMBand = self.CMBW.isChecked()
+        self.CMDrive = self.CMDrv.currentIndex()
+        self.CM = CM_to_Hex(self.CMBand, self.CMDrive)
+
+        self.RLDToggle = self.CheckRLDToggle.isChecked()
+        self.RLDBand = self.RLDBW.isChecked()
+        self.RLDDrive = self.RLDDrv.currentIndex()
+        self.RLD = RLD_to_Hex(self.RLDToggle, self.RLDBand, self.RLDDrive)
+
+        self.AFECH1 = self.C1Res.isChecked()
+        self.AFECH2 = self.C2Res.isChecked()
+        self.AFECH3 = self.C3Res.isChecked()
+        self.AFE = AFE_to_Hex(self.AFECH1, self.AFECH2, self.AFECH3)
+
+        self.FiltC1 = self.C1Filter.isChecked()
+        self.FiltC2 = self.C2Filter.isChecked()
+        self.FiltC3 = self.C3Filter.isChecked()
+        self.Filt = Filter_to_Hex(self.FiltC1, self.FiltC2, self.FiltC3)
+
+        self.R2 = R2_to_Hex(float(self.R2R.currentText()))
+        self.R3 = R3_to_Hex(float(self.R3R.currentText()))
+
+        self.ADCMax, self.ODR, self.bandwidth = getBandwidth(self.R2R.currentText(), self.R3R.currentText())
+        bw_label = "Bandwidth = %s Hz" % self.bandwidth
+        self.bandwidthlabel.setText(bw_label)
 
     def upload(self):
         self.progressBar.setValue(0)
-
-        CMBand = self.CMBW.isChecked()
-        CMDrive = self.CMDrv.currentIndex()
-        CM = CM_to_Hex(CMBand, CMDrive)
-
-        RLDToggle = self.RLDToggle.isChecked()
-        RLDBand = self.RLDBW.isChecked()
-        RLDDrive = self.RLDDrv.currentIndex()
-        RLD = RLD_to_Hex(RLDToggle, RLDBand, RLDDrive)
-
-        AFECH1 = self.C1Res.isChecked()
-        AFECH2 = self.C2Res.isChecked()
-        AFECH3 = self.C3Res.isChecked()
-        AFE = AFE_to_Hex(AFECH1, AFECH2, AFECH3)
-
-        FiltC1 = self.C1Filter.isChecked()
-        FiltC2 = self.C2Filter.isChecked()
-        FiltC3 = self.C3Filter.isChecked()
-        Filt = Filter_to_Hex(FiltC1, FiltC2, FiltC3)
-
-        R2 = R2_to_Hex(float(self.R2R.currentText()))
-        R3 = R3_to_Hex(float(self.R3R.currentText()))
-
+        self.save()
         print("Uploading!")
-
         progress = 100 / 8
-
-        sendData(R2_Reg, R2)
+        sendData(R2_Reg, self.R2)
         self.progressBar.setValue(int(progress * 1))
-        sendData(R3CH1_Reg, R3)
+        sendData(R3CH1_Reg, self.R3)
         self.progressBar.setValue(int(progress * 2))
-        sendData(R3CH2_Reg, R3)
+        sendData(R3CH2_Reg, self.R3)
         self.progressBar.setValue(int(progress * 3))
-        sendData(R3CH3_Reg, R3)
+        sendData(R3CH3_Reg, self.R3)
         self.progressBar.setValue(int(progress * 4))
-        sendData(CM_Reg, CM)
+        sendData(CM_Reg, self.CM)
         self.progressBar.setValue(int(progress * 5))
-        sendData(AFE_Reg, AFE)
+        sendData(AFE_Reg, self.AFE)
         self.progressBar.setValue(int(progress * 6))
-        sendData(RLD_Reg, RLD)
+        sendData(RLD_Reg, self.RLD)
         self.progressBar.setValue(int(progress * 7))
-        sendData(Filter_Reg, Filt)
+        sendData(Filter_Reg, self.Filt)
         self.progressBar.setValue(int(progress * 8))
 
 
