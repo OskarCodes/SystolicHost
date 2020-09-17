@@ -202,12 +202,10 @@ def ecg_read(ADCMax, bandwidth):
                     data = data.split(",")
                 except:
                     break
-                # y_vals[index] = data[0]
-                data[0] = adcvoltage(ADCMax)
-                data[1] = adcvoltage(ADCMax)
-                data[2] = adcvoltage(ADCMax)
+                data[0] = adcvoltage(data[0], ADCMax)
+                data[1] = adcvoltage(data[1], ADCMax)
+                data[2] = adcvoltage(data[2], ADCMax)
                 # print("Lead 1: %s, Lead 2: %s, Lead 3: %s" % (data[0], data[1], data[2]))
-                # data = data - 649
                 y_vals[0][i] = data[0]
                 y_vals[1][i] = data[1]
                 y_vals[2][i] = data[2]
@@ -268,21 +266,6 @@ class MyWindow(QtWidgets.QMainWindow):
         self.bandwidth = 0
         self.noise = 0
 
-        self.CMBand = True
-        self.CMDrive = 0
-        self.CM = 0
-        self.RLDToggle = False
-        self.RLDBand = True
-        self.RLDDrive = 0
-        self.RLD = ''
-        self.AFECH1 = True
-        self.AFECH2 = True
-        self.AFECH3 = True
-        self.AFE = ''
-        self.FiltC1 = True
-        self.FiltC2 = True
-        self.FiltC3 = True
-        self.Filt = ''
         self.R2 = 8
         self.R3 = 16
 
@@ -290,7 +273,6 @@ class MyWindow(QtWidgets.QMainWindow):
         with open('sampling.csv', newline='') as parameters:
             read = csv.reader(parameters, delimiter=',', quotechar='"')
             x = 0
-            delta = []
             for row in read:
                 if x == 0:
                     x = 1
@@ -300,69 +282,29 @@ class MyWindow(QtWidgets.QMainWindow):
     def setparam(self):
         self.bandwidth = self.samplingrline.currentData()
         self.R2, self.R3, self.ADCMax, self.ODR, self.noise = valLookup(self.bandwidth)
+        self.R2 = R2_to_Hex(float(self.R2))
+        self.R3 = R3_to_Hex(float(self.R3))
         self.noiseline.setText("%s uV" % self.noise)
         self.ODRline.setText("%s Hz" % self.ODR)
-
 
     def stop(self):
         sendData(CONFIG_Reg, bin_to_hex('00000000'))
 
     def startclick(self):
-        print("Start clicked")
+        print("ECG Measurement Init")
         global bool1
-        self.tabWidget.setTabEnabled(1, False)
         bool1 = not bool1
+        self.upload()
         ecg_read(int(self.ADCMax, 16), int(self.bandwidth))
-        self.tabWidget.setTabEnabled(1, True)
-
-    def save(self):
-        # elf.CMBand = self.CMBW.isChecked()
-        # self.CMDrive = self.CMDrv.currentIndex()
-        # self.CM = CM_to_Hex(self.CMBand, self.CMDrive)
-
-        # self.RLDToggle = self.CheckRLDToggle.isChecked()
-        # self.RLDBand = self.RLDBW.isChecked()
-        # self.RLDDrive = self.RLDDrv.currentIndex()
-        # self.RLD = RLD_to_Hex(self.RLDToggle, self.RLDBand, self.RLDDrive)
-
-        # self.AFECH1 = self.C1Res.isChecked()
-        # self.AFECH2 = self.C2Res.isChecked()
-        # self.AFECH3 = self.C3Res.isChecked()
-        # self.AFE = AFE_to_Hex(self.AFECH1, self.AFECH2, self.AFECH3)
-
-        # self.FiltC1 = self.C1Filter.isChecked()
-        # self.FiltC2 = self.C2Filter.isChecked()
-        # self.FiltC3 = self.C3Filter.isChecked()
-        # self.Filt = Filter_to_Hex(self.FiltC1, self.FiltC2, self.FiltC3)
-
-        self.R2 = R2_to_Hex(float(self.R2R.currentText()))
-        self.R3 = R3_to_Hex(float(self.R3R.currentText()))
-
-        self.ADCMax, self.ODR, self.bandwidth = valLookup(self.R2R.currentText(), self.R3R.currentText())
-        self.bandwidthline.setText("%s Hz" % self.bandwidth)
-        self.ODRline.setText("%s Hz" % self.ODR)
 
     def upload(self):
         self.progressBar.setValue(0)
         self.save()
-        print("Uploading!")
-        progress = 100 / 8
+        print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
         sendData(R2_Reg, self.R2)
-        self.progressBar.setValue(int(progress * 1))
         sendData(R3CH1_Reg, self.R3)
-        self.progressBar.setValue(int(progress * 2))
         sendData(R3CH2_Reg, self.R3)
-        self.progressBar.setValue(int(progress * 3))
         sendData(R3CH3_Reg, self.R3)
-        self.progressBar.setValue(int(progress * 4))
-        sendData(CM_Reg, self.CM)
-        self.progressBar.setValue(int(progress * 5))
-        sendData(AFE_Reg, self.AFE)
-        self.progressBar.setValue(int(progress * 6))
-        sendData(RLD_Reg, self.RLD)
-        self.progressBar.setValue(int(progress * 7))
-        sendData(Filter_Reg, self.Filt)
-        self.progressBar.setValue(int(progress * 8))
 
 
 if __name__ == '__main__':
