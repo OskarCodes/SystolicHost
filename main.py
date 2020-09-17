@@ -7,6 +7,7 @@ import ecg_plot
 import numpy as np
 from tqdm import tqdm
 import csv
+import pandas as pd
 
 DATA_LIM = 500
 x_vals = range(DATA_LIM)
@@ -236,19 +237,17 @@ def ecg_read(ADCMax, bandwidth):
     return 0
 
 
-def valLookup(R2, R3):
-    print("Getting bandwidth")
-    # Using csv file somewhat as a lookup table as using such a large if statement would be painful
-    # row[0] = R2, row[1] = R3
+def valLookup(bw):
     with open('sampling.csv', newline='') as parameters:
         read = csv.reader(parameters, delimiter=',', quotechar='"')
+        x = 0
         for row in read:
-            if row[0] == R2 and row[1] == R3:
-                ADCMax = row[2]
-                ODR = row[3]
-                BW = row[4]
-                return ADCMax, ODR, BW
-    return 0, 0, 0
+            if x == 0:
+                x = 1
+                continue
+            if row[4] == bw:
+                return row[0], row[1], row[2], row[3], row[6]
+            x += 1
 
 
 class MyWindow(QtWidgets.QMainWindow):
@@ -256,16 +255,18 @@ class MyWindow(QtWidgets.QMainWindow):
         super(MyWindow, self).__init__()
         uic.loadUi("mainwindow.ui", self)
         self.noiseline.setReadOnly(True)
+        self.populatecombo()
         self.ODRline.setReadOnly(True)
         self.startButton.clicked.connect(self.startclick)
-        self.samplingrslider.valueChanged.connect(self.linetest)
+        self.paramButton.clicked.connect(self.setparam)
         # self.uploadButton.clicked.connect(self.upload)
         self.stopButton.clicked.connect(self.stop)
         # self.saveButton.clicked.connect(self.save)
         # self.mouseReleaseEvent = self.bandwidth
-        self.ADCMax = ''
-        self.ODR = ''
-        self.bandwidth = ''
+        self.ADCMax = 0
+        self.ODR = 0
+        self.bandwidth = 0
+        self.noise = 0
 
         self.CMBand = True
         self.CMDrive = 0
@@ -285,9 +286,23 @@ class MyWindow(QtWidgets.QMainWindow):
         self.R2 = 8
         self.R3 = 16
 
-    def linetest(self):
-        self.bandwidthline.setText("%s Hz" % self.samplingrslider.value())
-        self.noiseline.setText("%s uV" % self.samplingrslider.value())
+    def populatecombo(self):
+        with open('sampling.csv', newline='') as parameters:
+            read = csv.reader(parameters, delimiter=',', quotechar='"')
+            x = 0
+            delta = []
+            for row in read:
+                if x == 0:
+                    x = 1
+                    continue
+                self.samplingrline.addItem(row[4] + " Hz", row[4])
+
+    def setparam(self):
+        self.bandwidth = self.samplingrline.currentData()
+        self.R2, self.R3, self.ADCMax, self.ODR, self.noise = valLookup(self.bandwidth)
+        self.noiseline.setText("%s uV" % self.noise)
+        self.ODRline.setText("%s Hz" % self.ODR)
+
 
     def stop(self):
         sendData(CONFIG_Reg, bin_to_hex('00000000'))
