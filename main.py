@@ -255,34 +255,39 @@ class MyWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super(MyWindow, self).__init__()
         uic.loadUi("mainwindow.ui", self)
-        self.bandwidthline.setReadOnly(True)
+        self.noiseline.setReadOnly(True)
         self.ODRline.setReadOnly(True)
         self.startButton.clicked.connect(self.startclick)
-        self.uploadButton.clicked.connect(self.upload)
+        self.samplingrslider.valueChanged.connect(self.linetest)
+        # self.uploadButton.clicked.connect(self.upload)
         self.stopButton.clicked.connect(self.stop)
-        self.saveButton.clicked.connect(self.save)
+        # self.saveButton.clicked.connect(self.save)
         # self.mouseReleaseEvent = self.bandwidth
         self.ADCMax = ''
         self.ODR = ''
         self.bandwidth = ''
 
-        self.CMBand = False
+        self.CMBand = True
         self.CMDrive = 0
         self.CM = 0
         self.RLDToggle = False
-        self.RLDBand = ''
-        self.RLDDrive = ''
+        self.RLDBand = True
+        self.RLDDrive = 0
         self.RLD = ''
-        self.AFECH1 = ''
-        self.AFECH2 = ''
-        self.AFECH3 = ''
+        self.AFECH1 = True
+        self.AFECH2 = True
+        self.AFECH3 = True
         self.AFE = ''
-        self.FiltC1 = ''
-        self.FiltC2 = ''
-        self.FiltC3 = ''
+        self.FiltC1 = True
+        self.FiltC2 = True
+        self.FiltC3 = True
         self.Filt = ''
-        self.R2 = ''
-        self.R3 = ''
+        self.R2 = 8
+        self.R3 = 16
+
+    def linetest(self):
+        self.bandwidthline.setText("%s Hz" % self.samplingrslider.value())
+        self.noiseline.setText("%s uV" % self.samplingrslider.value())
 
     def stop(self):
         sendData(CONFIG_Reg, bin_to_hex('00000000'))
@@ -296,24 +301,24 @@ class MyWindow(QtWidgets.QMainWindow):
         self.tabWidget.setTabEnabled(1, True)
 
     def save(self):
-        self.CMBand = self.CMBW.isChecked()
-        self.CMDrive = self.CMDrv.currentIndex()
-        self.CM = CM_to_Hex(self.CMBand, self.CMDrive)
+        # elf.CMBand = self.CMBW.isChecked()
+        # self.CMDrive = self.CMDrv.currentIndex()
+        # self.CM = CM_to_Hex(self.CMBand, self.CMDrive)
 
-        self.RLDToggle = self.CheckRLDToggle.isChecked()
-        self.RLDBand = self.RLDBW.isChecked()
-        self.RLDDrive = self.RLDDrv.currentIndex()
-        self.RLD = RLD_to_Hex(self.RLDToggle, self.RLDBand, self.RLDDrive)
+        # self.RLDToggle = self.CheckRLDToggle.isChecked()
+        # self.RLDBand = self.RLDBW.isChecked()
+        # self.RLDDrive = self.RLDDrv.currentIndex()
+        # self.RLD = RLD_to_Hex(self.RLDToggle, self.RLDBand, self.RLDDrive)
 
-        self.AFECH1 = self.C1Res.isChecked()
-        self.AFECH2 = self.C2Res.isChecked()
-        self.AFECH3 = self.C3Res.isChecked()
-        self.AFE = AFE_to_Hex(self.AFECH1, self.AFECH2, self.AFECH3)
+        # self.AFECH1 = self.C1Res.isChecked()
+        # self.AFECH2 = self.C2Res.isChecked()
+        # self.AFECH3 = self.C3Res.isChecked()
+        # self.AFE = AFE_to_Hex(self.AFECH1, self.AFECH2, self.AFECH3)
 
-        self.FiltC1 = self.C1Filter.isChecked()
-        self.FiltC2 = self.C2Filter.isChecked()
-        self.FiltC3 = self.C3Filter.isChecked()
-        self.Filt = Filter_to_Hex(self.FiltC1, self.FiltC2, self.FiltC3)
+        # self.FiltC1 = self.C1Filter.isChecked()
+        # self.FiltC2 = self.C2Filter.isChecked()
+        # self.FiltC3 = self.C3Filter.isChecked()
+        # self.Filt = Filter_to_Hex(self.FiltC1, self.FiltC2, self.FiltC3)
 
         self.R2 = R2_to_Hex(float(self.R2R.currentText()))
         self.R3 = R3_to_Hex(float(self.R3R.currentText()))
