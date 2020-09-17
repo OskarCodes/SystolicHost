@@ -266,8 +266,8 @@ class MyWindow(QtWidgets.QMainWindow):
         self.bandwidth = 0
         self.noise = 0
 
-        self.R2 = 8
-        self.R3 = 16
+        self.R2 = 0x01
+        self.R3 = 0x02
 
     def populatecombo(self):
         with open('sampling.csv', newline='') as parameters:
@@ -295,11 +295,9 @@ class MyWindow(QtWidgets.QMainWindow):
         global bool1
         bool1 = not bool1
         self.upload()
-        ecg_read(int(self.ADCMax, 16), int(self.bandwidth))
+        #ecg_read(self.ADCMax, int(self.bandwidth))
 
     def upload(self):
-        self.progressBar.setValue(0)
-        self.save()
         print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
         sendData(R2_Reg, self.R2)
         sendData(R3CH1_Reg, self.R3)
