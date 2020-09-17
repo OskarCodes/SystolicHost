@@ -236,6 +236,7 @@ def ecg_read(ADCMax, bandwidth):
 
 
 def valLookup(bw):
+    # TODO: Make sure that bandwidth values do not occur twice, and if so chose one with lower noise or first one if same
     with open('sampling.csv', newline='') as parameters:
         read = csv.reader(parameters, delimiter=',', quotechar='"')
         x = 0
@@ -249,6 +250,7 @@ def valLookup(bw):
 
 
 class MyWindow(QtWidgets.QMainWindow):
+    # TODO: Add time adjustment functionality with max value in ECG read being changed accordingly. Calculate max value with time and bandwidth
     def __init__(self):
         super(MyWindow, self).__init__()
         uic.loadUi("mainwindow.ui", self)
@@ -295,7 +297,7 @@ class MyWindow(QtWidgets.QMainWindow):
         global bool1
         bool1 = not bool1
         self.upload()
-        #ecg_read(self.ADCMax, int(self.bandwidth))
+        ecg_read(self.ADCMax, int(self.bandwidth))
 
     def upload(self):
         print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
