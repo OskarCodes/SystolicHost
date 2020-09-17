@@ -1,7 +1,7 @@
 import sys
 import time
 
-from PyQt5 import QtWidgets, uic, QtCore
+from PyQt5 import QtWidgets, uic
 import serial
 import ecg_plot
 import numpy as np
@@ -37,43 +37,31 @@ def bin_to_hex(bin):
 
 def R2_to_Hex(x):
     if x == 4:
-        R2 = '4'
         return bin_to_hex('00000001')
     elif x == 5:
-        R2 = '5'
         return bin_to_hex('00000010')
     elif x == 6:
-        R2 = '6'
         return bin_to_hex('00000100')
     elif x == 8:
-        R2 = '8'
         return bin_to_hex('00001000')
 
 
 def R3_to_Hex(x):
     if x == 4:
-        R3 = '4'
         return bin_to_hex('00000001')
     elif x == 6:
-        R3 = '6'
         return bin_to_hex('00000010')
     elif x == 8:
-        R3 = '8'
         return bin_to_hex('00000100')
     elif x == 12:
-        R3 = '12'
         return bin_to_hex('00001000')
     elif x == 16:
-        R3 = '16'
         return bin_to_hex('00010000')
     elif x == 32:
-        R3 = '32'
         return bin_to_hex('00100000')
     elif x == 64:
-        R3 = '64'
         return bin_to_hex('01000000')
     elif x == 128:
-        R3 = '128'
         return bin_to_hex('10000000')
 
 
@@ -248,7 +236,7 @@ def ecg_read(ADCMax, bandwidth):
     return 0
 
 
-def getBandwidth(R2, R3):
+def valLookup(R2, R3):
     print("Getting bandwidth")
     # Using csv file somewhat as a lookup table as using such a large if statement would be painful
     # row[0] = R2, row[1] = R3
@@ -330,7 +318,7 @@ class MyWindow(QtWidgets.QMainWindow):
         self.R2 = R2_to_Hex(float(self.R2R.currentText()))
         self.R3 = R3_to_Hex(float(self.R3R.currentText()))
 
-        self.ADCMax, self.ODR, self.bandwidth = getBandwidth(self.R2R.currentText(), self.R3R.currentText())
+        self.ADCMax, self.ODR, self.bandwidth = valLookup(self.R2R.currentText(), self.R3R.currentText())
         self.bandwidthline.setText("%s Hz" % self.bandwidth)
         self.ODRline.setText("%s Hz" % self.ODR)
 
@@ -362,13 +350,3 @@ if __name__ == '__main__':
     window = MyWindow()
     window.show()
     sys.exit(app.exec())
-
-"""
-app = QtWidgets.QApplication(sys.argv)
-
-window = uic.loadUi("mainwindow.ui")
-window.pushButton.clicked.connect(convert)
-window.radioButton.clicked.connect(disable)
-window.show()
-app.exec()
-"""
