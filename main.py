@@ -229,7 +229,6 @@ def ecg_read(ADCMax, bandwidth, DATA_LIM=500):
 
 
 def valLookup(bw):
-    # TODO: Make sure that bandwidth values do not occur twice, and if so chose one with lower noise or first one if same
     with open('sampling.csv', newline='') as parameters:
         read = csv.reader(parameters, delimiter=',', quotechar='"')
         x = 0
@@ -247,6 +246,7 @@ class MyWindow(QtWidgets.QMainWindow):
         super(MyWindow, self).__init__()
         uic.loadUi("mainwindow.ui", self)
 
+        self.samplingline.setText("5")
         self.noiseline.setReadOnly(True)
         self.ODRline.setReadOnly(True)
 
@@ -271,10 +271,14 @@ class MyWindow(QtWidgets.QMainWindow):
         with open('sampling.csv', newline='') as parameters:
             read = csv.reader(parameters, delimiter=',', quotechar='"')
             x = 0
+            last = 0
             for row in read:
                 if x == 0:
                     x = 1
                     continue
+                if row[4] == last:
+                    continue
+                last = row[4]
                 self.samplingrline.addItem(row[4] + " Hz", row[4])
 
     def setparam(self):
