@@ -7,12 +7,6 @@ import ecg_plot
 import numpy as np
 from tqdm import tqdm
 import csv
-import pandas as pd
-
-DATA_LIM = 500
-x_vals = range(DATA_LIM)
-y_vals = np.empty([6, DATA_LIM])
-index = 0
 
 bool1 = False
 
@@ -25,8 +19,6 @@ CM_Reg = '0x0B'
 RLD_Reg = '0x0C'
 AFE_Reg = '0x13'
 Filter_Reg = '0x26'
-
-stop = 0
 
 
 def bin_to_hex(bin):
@@ -178,10 +170,11 @@ def adcvoltage(rawdata, adcmax=0x800000):
     return rawdata
 
 
-def ecg_read(ADCMax, bandwidth):
-    global y_vals
-    global stop
-    global index
+def ecg_read(ADCMax, bandwidth, DATA_LIM=500):
+    stop = 0
+    index = 0
+    x_vals = range(DATA_LIM)
+    y_vals = np.empty([6, DATA_LIM])
     sendData(CONFIG_Reg, bin_to_hex('00000001'))
     time.sleep(1)
 
@@ -250,22 +243,25 @@ def valLookup(bw):
 
 
 class MyWindow(QtWidgets.QMainWindow):
-    # TODO: Add time adjustment functionality with max value in ECG read being changed accordingly. Calculate max value with time and bandwidth
     def __init__(self):
         super(MyWindow, self).__init__()
         uic.loadUi("mainwindow.ui", self)
+
         self.noiseline.setReadOnly(True)
-        self.populatecombo()
         self.ODRline.setReadOnly(True)
+
+        self.populatecombo()
+
         self.startButton.clicked.connect(self.startclick)
         self.paramButton.clicked.connect(self.setparam)
-        # self.uploadButton.clicked.connect(self.upload)
         self.stopButton.clicked.connect(self.stop)
-        # self.saveButton.clicked.connect(self.save)
-        # self.mouseReleaseEvent = self.bandwidth
+
+        self.bandwidth = 0
+        self.time = 0
+        self.points = 0
+
         self.ADCMax = 0
         self.ODR = 0
-        self.bandwidth = 0
         self.noise = 0
 
         self.R2 = 0x01
@@ -282,7 +278,9 @@ class MyWindow(QtWidgets.QMainWindow):
                 self.samplingrline.addItem(row[4] + " Hz", row[4])
 
     def setparam(self):
+        self.time = self.samplingline.text()
         self.bandwidth = self.samplingrline.currentData()
+        self.points = int(self.time) * int(self.bandwidth)
         self.R2, self.R3, self.ADCMax, self.ODR, self.noise = valLookup(self.bandwidth)
         self.R2 = R2_to_Hex(float(self.R2))
         self.R3 = R3_to_Hex(float(self.R3))
@@ -297,7 +295,7 @@ class MyWindow(QtWidgets.QMainWindow):
         global bool1
         bool1 = not bool1
         self.upload()
-        ecg_read(self.ADCMax, int(self.bandwidth))
+        ecg_read(self.ADCMax, int(self.bandwidth), int(self.points))
 
     def upload(self):
         print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
