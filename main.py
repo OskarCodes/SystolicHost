@@ -8,6 +8,12 @@ import numpy as np
 from tqdm import tqdm
 import csv
 
+import matplotlib.pyplot as plt
+import scipy.fftpack
+from scipy import signal
+
+import time
+
 bool1 = False
 
 CONFIG_Reg = "0x00"
@@ -171,6 +177,7 @@ def adcvoltage(rawdata, adcmax=0x800000):
 
 
 def ecg_read(ADCMax, bandwidth, DATA_LIM=500):
+    DATA_LIM = round(DATA_LIM)
     stop = 0
     index = 0
     x_vals = range(DATA_LIM)
@@ -184,6 +191,7 @@ def ecg_read(ADCMax, bandwidth, DATA_LIM=500):
         print("Serial port opening for ecg read failed \n")
         print("Flag: %s \n" % e)
     ser.flush()
+    start = time.time()
     for i in tqdm(range(0, DATA_LIM)):
         while not stop:
             bytesToRead = ser.inWaiting()
@@ -203,6 +211,15 @@ def ecg_read(ADCMax, bandwidth, DATA_LIM=500):
                 y_vals[1][i] = data[1]
                 y_vals[2][i] = data[2]
                 break
+    end = time.time()
+    xtick = 0
+    for i in y_vals[0]:
+        xtick += 1
+    print("Values: %s" % xtick)
+    delta = end - start
+    srate = xtick/delta
+    print("Sampling Rate: %s" % srate)
+    print(delta)
     ser.close()
     sendData(CONFIG_Reg, bin_to_hex('00000000'))
     index = 0
@@ -223,8 +240,35 @@ def ecg_read(ADCMax, bandwidth, DATA_LIM=500):
         y_vals[3][i] = y_vals[3][i] - average_aVR
         y_vals[4][i] = y_vals[4][i] - average_aVL
         y_vals[5][i] = y_vals[5][i] - average_aVF
+
+    samp_freq = bandwidth  # Sample frequency (Hz)
+    notch_freq = 50.0  # Frequency to be removed from signal (Hz)
+    quality_factor = 30.0  # Quality factor
+    b_notch, a_notch = signal.iirnotch(notch_freq, quality_factor, samp_freq)
+
+    y_vals[0] = signal.filtfilt(b_notch, a_notch, y_vals[0])
     ecg_plot.plot(y_vals, sample_rate=bandwidth, title='ECG 6 Lead', columns=2)
     ecg_plot.show()
+
+    """sp = np.fft.fft(y_vals[0])
+    freq = np.fft.fftfreq(y_vals[0].shape[-1])
+    freq = freq * bandwidth
+    data = sp.real
+    maxElement = np.amax(data)
+    result = np.where(data == maxElement)
+    print(result)
+
+    y_vals_notched = signal.filtfilt(b_notch, a_notch, y_vals[0])
+    sp2 = np.fft.fft(y_vals_notched)
+    freq2 = np.fft.fftfreq(y_vals_notched.shape[-1])
+    freq2 = freq2 * bandwidth
+
+    fig, axs = plt.subplots(2)
+    fig.suptitle('FFT of ECG data with IIR notch 50 Hz')
+    axs[0].plot(abs(freq), abs(sp.real))
+    axs[1].plot(abs(freq), abs(sp2.real))
+    plt.show()"""
+
     return 0
 
 
@@ -250,24 +294,25 @@ class MyWindow(QtWidgets.QMainWindow):
         self.noiseline.setReadOnly(True)
         self.ODRline.setReadOnly(True)
 
-        self.populatecombo()
+        self.populateband()
 
         self.startButton.clicked.connect(self.startclick)
         self.paramButton.clicked.connect(self.setparam)
         self.stopButton.clicked.connect(self.stop)
 
-        self.bandwidth = 0
-        self.time = 0
-        self.points = 0
+        # USER SET IN SETTINGS
+        self.bandwidth = 160
+        self.time = "5"
 
-        self.ADCMax = 0
+        # ADUSTED BASED ON BANDWIDTH AND TIME SETTINGS
+        self.R2 = 0x01
+        self.R3 = 0x02
+        self.points = 300
+        self.ADCMax = "0x800000"
         self.ODR = 0
         self.noise = 0
 
-        self.R2 = 0x01
-        self.R3 = 0x02
-
-    def populatecombo(self):
+    def populateband(self):
         with open('sampling.csv', newline='') as parameters:
             read = csv.reader(parameters, delimiter=',', quotechar='"')
             x = 0
@@ -299,7 +344,7 @@ class MyWindow(QtWidgets.QMainWindow):
         global bool1
         bool1 = not bool1
         self.upload()
-        ecg_read(self.ADCMax, int(self.bandwidth), int(self.points))
+        ecg_read(int(self.ADCMax, 16), int(self.bandwidth), int(self.points))
 
     def upload(self):
         print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
