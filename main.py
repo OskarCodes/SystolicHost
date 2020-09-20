@@ -11,6 +11,7 @@ import csv
 import matplotlib.pyplot as plt
 import scipy.fftpack
 from scipy import signal
+from scipy.signal import butter, lfilter
 
 import time
 
@@ -176,7 +177,8 @@ def adcvoltage(rawdata, adcmax=0x800000):
     return rawdata
 
 
-def ecg_read(ADCMax, bandwidth, DATA_LIM=500):
+def ecg_read(ADCMax, bandwidth, odr, DATA_LIM=500):
+    # DATA_LIM = 160 * 5
     DATA_LIM = round(DATA_LIM)
     stop = 0
     index = 0
@@ -210,6 +212,7 @@ def ecg_read(ADCMax, bandwidth, DATA_LIM=500):
                 y_vals[0][i] = data[0]
                 y_vals[1][i] = data[1]
                 y_vals[2][i] = data[2]
+                # time.sleep(1/500)
                 break
     end = time.time()
     xtick = 0
@@ -217,7 +220,7 @@ def ecg_read(ADCMax, bandwidth, DATA_LIM=500):
         xtick += 1
     print("Values: %s" % xtick)
     delta = end - start
-    srate = xtick/delta
+    srate = xtick / delta
     print("Sampling Rate: %s" % srate)
     print(delta)
     ser.close()
@@ -227,9 +230,9 @@ def ecg_read(ADCMax, bandwidth, DATA_LIM=500):
     average_ii = np.average(y_vals[1])
     average_iii = np.average(y_vals[2])
     for i in range(0, DATA_LIM):
-        y_vals[0][i] = y_vals[0][i] - average_i
-        y_vals[1][i] = y_vals[1][i] - average_ii
-        y_vals[2][i] = y_vals[2][i] - average_iii
+        y_vals[0][i] = (y_vals[0][i] - average_i) * pow(10, 3)
+        y_vals[1][i] = (y_vals[1][i] - average_ii) * pow(10, 3)
+        y_vals[2][i] = (y_vals[2][i] - average_iii) * pow(10, 3)
         y_vals[3][i] = -1 * (float(y_vals[0][i]) + float(y_vals[1][i])) / 2  # aVR
         y_vals[4][i] = (float(y_vals[0][i]) - float(y_vals[1][i])) / -2  # aVL
         y_vals[5][i] = (float(y_vals[1][i]) - float(y_vals[0][i])) / -2  # aVF
@@ -241,27 +244,27 @@ def ecg_read(ADCMax, bandwidth, DATA_LIM=500):
         y_vals[4][i] = y_vals[4][i] - average_aVL
         y_vals[5][i] = y_vals[5][i] - average_aVF
 
-    samp_freq = bandwidth  # Sample frequency (Hz)
+    samp_freq = srate  # Sample frequency (Hz)
     notch_freq = 50.0  # Frequency to be removed from signal (Hz)
     quality_factor = 30.0  # Quality factor
     b_notch, a_notch = signal.iirnotch(notch_freq, quality_factor, samp_freq)
 
     y_vals[0] = signal.filtfilt(b_notch, a_notch, y_vals[0])
-    ecg_plot.plot(y_vals, sample_rate=bandwidth, title='ECG 6 Lead', columns=2)
+    y_vals[1] = signal.filtfilt(b_notch, a_notch, y_vals[1])
+    y_vals[2] = signal.filtfilt(b_notch, a_notch, y_vals[2])
+
+    ecg_plot.plot(y_vals, sample_rate=srate, title='ECG 6 Lead', columns=2)
     ecg_plot.show()
 
     """sp = np.fft.fft(y_vals[0])
     freq = np.fft.fftfreq(y_vals[0].shape[-1])
-    freq = freq * bandwidth
+    freq = freq * srate
     data = sp.real
-    maxElement = np.amax(data)
-    result = np.where(data == maxElement)
-    print(result)
 
     y_vals_notched = signal.filtfilt(b_notch, a_notch, y_vals[0])
     sp2 = np.fft.fft(y_vals_notched)
     freq2 = np.fft.fftfreq(y_vals_notched.shape[-1])
-    freq2 = freq2 * bandwidth
+    freq2 = freq2 * srate
 
     fig, axs = plt.subplots(2)
     fig.suptitle('FFT of ECG data with IIR notch 50 Hz')
@@ -329,8 +332,8 @@ class MyWindow(QtWidgets.QMainWindow):
     def setparam(self):
         self.time = self.samplingline.text()
         self.bandwidth = self.samplingrline.currentData()
-        self.points = int(self.time) * int(self.bandwidth)
         self.R2, self.R3, self.ADCMax, self.ODR, self.noise = valLookup(self.bandwidth)
+        self.points = int(self.time) * int(self.ODR)
         self.R2 = R2_to_Hex(float(self.R2))
         self.R3 = R3_to_Hex(float(self.R3))
         self.noiseline.setText("%s uV" % self.noise)
@@ -344,7 +347,7 @@ class MyWindow(QtWidgets.QMainWindow):
         global bool1
         bool1 = not bool1
         self.upload()
-        ecg_read(int(self.ADCMax, 16), int(self.bandwidth), int(self.points))
+        ecg_read(int(self.ADCMax, 16), int(self.bandwidth), int(self.ODR), int(self.points))
 
     def upload(self):
         print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
