@@ -15,8 +15,6 @@ from scipy.signal import butter, lfilter
 
 import time
 
-bool1 = False
-
 CONFIG_Reg = "0x00"
 R2_Reg = "0x21"
 R3CH1_Reg = "0x22"
@@ -344,8 +342,6 @@ class MyWindow(QtWidgets.QMainWindow):
 
     def startclick(self):
         print("ECG Measurement Init")
-        global bool1
-        bool1 = not bool1
         self.upload()
         ecg_read(int(self.ADCMax, 16), int(self.bandwidth), int(self.ODR), int(self.points))
 
