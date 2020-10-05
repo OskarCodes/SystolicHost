@@ -9,9 +9,7 @@ from tqdm import tqdm
 import csv
 
 import matplotlib.pyplot as plt
-import scipy.fftpack
 from scipy import signal
-from scipy.signal import butter, lfilter
 
 import time
 
@@ -232,8 +230,8 @@ def ecg_read(ADCMax, bandwidth, odr, DATA_LIM=500):
         y_vals[1][i] = (y_vals[1][i] - average_ii) * pow(10, 3)
         y_vals[2][i] = (y_vals[2][i] - average_iii) * pow(10, 3)
         y_vals[3][i] = -1 * (float(y_vals[0][i]) + float(y_vals[1][i])) / 2  # aVR
-        y_vals[4][i] = (float(y_vals[0][i]) - float(y_vals[1][i])) / -2  # aVL
-        y_vals[5][i] = (float(y_vals[1][i]) - float(y_vals[0][i])) / -2  # aVF
+        y_vals[4][i] = (float(y_vals[0][i]) - float(y_vals[1][i])) / 2  # aVL
+        y_vals[5][i] = (float(y_vals[1][i]) - float(y_vals[0][i])) / 2  # aVF
     average_aVR = np.average(y_vals[3])
     average_aVL = np.average(y_vals[4])
     average_aVF = np.average(y_vals[5])
@@ -242,14 +240,25 @@ def ecg_read(ADCMax, bandwidth, odr, DATA_LIM=500):
         y_vals[4][i] = y_vals[4][i] - average_aVL
         y_vals[5][i] = y_vals[5][i] - average_aVF
 
-    samp_freq = srate  # Sample frequency (Hz)
-    notch_freq = 50.0  # Frequency to be removed from signal (Hz)
-    quality_factor = 30.0  # Quality factor
+    # Sample frequency (Hz)
+    samp_freq = srate
+
+    # Frequency to be removed from signal (Hz)
+    notch_freq = 50.0  # For usage in areas with 50 Hz mains power
+    # notch_freq = 60.0 # For usage in areas with 60 Hz mains power
+
+    # Quality factor
+    quality_factor = 30.0
+
     b_notch, a_notch = signal.iirnotch(notch_freq, quality_factor, samp_freq)
 
+    # 50 Hz notch filter applied to all 6 leads
     y_vals[0] = signal.filtfilt(b_notch, a_notch, y_vals[0])
     y_vals[1] = signal.filtfilt(b_notch, a_notch, y_vals[1])
     y_vals[2] = signal.filtfilt(b_notch, a_notch, y_vals[2])
+    y_vals[3] = signal.filtfilt(b_notch, a_notch, y_vals[3])
+    y_vals[4] = signal.filtfilt(b_notch, a_notch, y_vals[4])
+    y_vals[5] = signal.filtfilt(b_notch, a_notch, y_vals[5])
 
     ecg_plot.plot(y_vals, sample_rate=srate, title='ECG 6 Lead', columns=2)
     ecg_plot.show()
