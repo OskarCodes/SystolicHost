@@ -12,8 +12,6 @@ import csv
 import matplotlib.pyplot as plt
 from scipy import signal
 
-import time
-
 CONFIG_Reg = "0x00"
 R2_Reg = "0x21"
 R3CH1_Reg = "0x22"
@@ -25,8 +23,8 @@ AFE_Reg = '0x13'
 Filter_Reg = '0x26'
 
 
-def bin_to_hex(bin):
-    hexb = hex(int(bin, 2))[2:]
+def bin_to_hex(binaryin):
+    hexb = hex(int(binaryin, 2))[2:]
     hexb = hexb.zfill(2)
     hexb = "0x" + hexb
     return hexb
@@ -46,19 +44,19 @@ def R2_to_Hex(x):
 def R3_to_Hex(x):
     if x == 4:
         return bin_to_hex('00000001')
-    elif x == 6:
+    if x == 6:
         return bin_to_hex('00000010')
-    elif x == 8:
+    if x == 8:
         return bin_to_hex('00000100')
-    elif x == 12:
+    if x == 12:
         return bin_to_hex('00001000')
-    elif x == 16:
+    if x == 16:
         return bin_to_hex('00010000')
-    elif x == 32:
+    if x == 32:
         return bin_to_hex('00100000')
-    elif x == 64:
+    if x == 64:
         return bin_to_hex('01000000')
-    elif x == 128:
+    if x == 128:
         return bin_to_hex('10000000')
 
 
@@ -174,12 +172,10 @@ def adcvoltage(rawdata, adcmax=0x800000):
     return rawdata
 
 
-def ecg_read(ADCMax, bandwidth, odr, DATA_LIM=500):
+def ecg_read(ADCMax, DATA_LIM=500):
     # DATA_LIM = 160 * 5
     DATA_LIM = round(DATA_LIM)
     stop = 0
-    index = 0
-    x_vals = range(DATA_LIM)
     y_vals = np.empty([6, DATA_LIM])
     sendData(CONFIG_Reg, bin_to_hex('00000001'))
     time.sleep(1)
@@ -296,6 +292,10 @@ def valLookup(bw):
             x += 1
 
 
+def stop():
+    sendData(CONFIG_Reg, bin_to_hex('00000000'))
+
+
 class MyWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super(MyWindow, self).__init__()
@@ -309,7 +309,7 @@ class MyWindow(QtWidgets.QMainWindow):
 
         self.startButton.clicked.connect(self.startclick)
         self.paramButton.clicked.connect(self.setparam)
-        self.stopButton.clicked.connect(self.stop)
+        self.stopButton.clicked.connect(stop)
         self.samplingrline.currentTextChanged.connect(lambda: self.updatevar())
 
         # USED TO DETERMINE UNSAVED CHANGES
@@ -356,9 +356,6 @@ class MyWindow(QtWidgets.QMainWindow):
         self.noiseline.setText("%s uV" % self.noise)
         self.ODRline.setText("%s Hz" % self.ODR)
 
-    def stop(self):
-        sendData(CONFIG_Reg, bin_to_hex('00000000'))
-
     def startclick(self):
         print(self.updated)
         if self.updated == 1:
@@ -367,7 +364,7 @@ class MyWindow(QtWidgets.QMainWindow):
                 return
         print("ECG Measurement Init")
         self.upload()
-        ecg_read(int(self.ADCMax, 16), int(self.bandwidth), int(self.ODR), int(self.points))
+        ecg_read(int(self.ADCMax, 16), int(self.points))
 
     def upload(self):
         print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
