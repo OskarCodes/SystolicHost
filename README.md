@@ -1,2 +1,4 @@
 # Systolic
-Development branch of code for host device of my ultra-low-cost ECG - Systolic. Has a new UI with simplified configuration for use by a health professional
+Master branch of code for host device of my ultra-low-cost ECG - Systolic. 
+
+This program runs on the host device of the ECG. It is made with Python and relies on PyQt for the GUI.
