@@ -2,6 +2,7 @@ import sys
 import time
 
 from PyQt5 import QtWidgets, uic
+from PyQt5.QtWidgets import QMessageBox
 import serial
 import ecg_plot
 import numpy as np
@@ -309,6 +310,10 @@ class MyWindow(QtWidgets.QMainWindow):
         self.startButton.clicked.connect(self.startclick)
         self.paramButton.clicked.connect(self.setparam)
         self.stopButton.clicked.connect(self.stop)
+        self.samplingrline.currentTextChanged.connect(lambda: self.updatevar())
+
+        # USED TO DETERMINE UNSAVED CHANGES
+        self.updated = 0
 
         # USER SET IN SETTINGS
         self.bandwidth = 160
@@ -321,6 +326,10 @@ class MyWindow(QtWidgets.QMainWindow):
         self.ADCMax = "0x800000"
         self.ODR = 0
         self.noise = 0
+
+    def updatevar(self):
+        print("Updated")
+        self.updated = 1
 
     def populateband(self):
         with open('sampling.csv', newline='') as parameters:
@@ -337,6 +346,7 @@ class MyWindow(QtWidgets.QMainWindow):
                 self.samplingrline.addItem(row[4] + " Hz", row[4])
 
     def setparam(self):
+        self.updated = 0
         self.time = self.samplingline.text()
         self.bandwidth = self.samplingrline.currentData()
         self.R2, self.R3, self.ADCMax, self.ODR, self.noise = valLookup(self.bandwidth)
@@ -350,6 +360,11 @@ class MyWindow(QtWidgets.QMainWindow):
         sendData(CONFIG_Reg, bin_to_hex('00000000'))
 
     def startclick(self):
+        print(self.updated)
+        if self.updated == 1:
+            ret = QMessageBox.question(self, 'Warning', "You have modified your sampling parameters but have not set them. Continue?", QMessageBox.Yes | QMessageBox.No)
+            if ret == QMessageBox.No:
+                return
         print("ECG Measurement Init")
         self.upload()
         ecg_read(int(self.ADCMax, 16), int(self.bandwidth), int(self.ODR), int(self.points))
