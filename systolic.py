@@ -358,14 +358,14 @@ class MyWindow(QtWidgets.QMainWindow):
             error.setText("An error occurred when trying to connect.")
             error.setWindowTitle("Systolic")
             error.setDetailedText(f"{e}")
-            ret = error.exec_()
+            error.exec_()
             self.connstate(0)
             return
 
     def refreshCOM(self):
         self.comSel.clear()
         availPorts = serial.tools.list_ports.comports()
-        for port, desc, hwid in sorted(availPorts):
+        for port, desc in sorted(availPorts):
             self.comSel.addItem(desc, port)
 
     def updatevar(self):
