@@ -3,7 +3,10 @@ import time
 
 from PyQt5 import QtWidgets, uic
 from PyQt5.QtWidgets import QMessageBox
+
 import serial
+import serial.tools.list_ports
+
 import ecg_plot
 import numpy as np
 from tqdm import tqdm
@@ -138,12 +141,7 @@ def Filter_to_Hex(C1, C2, C3):
     return bin_to_hex(binary)
 
 
-def sendData(register, data):
-    try:
-        ser = serial.Serial('COM16', 115200)  # open serial port
-    except Exception as e:
-        print("Serial port opening for tx failed \n")
-        print("Flag: %s \n" % e)
+def sendData(register, data, ser):
     data = str(data)
     register = str(register)
     data = register + "," + data
@@ -154,7 +152,6 @@ def sendData(register, data):
     except Exception as e:
         print("Serial port write failed \n")
         print("Flag: %s \n" % e)
-    ser.close()
 
 
 def hasNumbers(inputString):
@@ -172,20 +169,14 @@ def adcvoltage(rawdata, adcmax=0x800000):
     return rawdata
 
 
-def ecg_read(ADCMax, DATA_LIM=500):
+def ecg_read(ADCMax, ser, DATA_LIM=500):
     # DATA_LIM = 160 * 5
     DATA_LIM = round(DATA_LIM)
     stop = 0
     y_vals = np.empty([6, DATA_LIM])
-    sendData(CONFIG_Reg, bin_to_hex('00000001'))
+    sendData(CONFIG_Reg, bin_to_hex('00000001'), ser)
     time.sleep(1)
-
-    try:
-        ser = serial.Serial('COM16', 115200)  # open serial port
-    except Exception as e:
-        print("Serial port opening for ecg read failed \n")
-        print("Flag: %s \n" % e)
-    ser.flush()
+    ser.reset_input_buffer()
     start = time.time()
     for i in tqdm(range(0, DATA_LIM)):
         while not stop:
@@ -216,8 +207,7 @@ def ecg_read(ADCMax, DATA_LIM=500):
     srate = xtick / delta
     print("Sampling Rate: %s" % srate)
     print(delta)
-    ser.close()
-    sendData(CONFIG_Reg, bin_to_hex('00000000'))
+    sendData(CONFIG_Reg, bin_to_hex('00000000'), ser)
     index = 0
     average_i = np.average(y_vals[0])
     average_ii = np.average(y_vals[1])
@@ -292,9 +282,6 @@ def valLookup(bw):
             x += 1
 
 
-def stop():
-    sendData(CONFIG_Reg, bin_to_hex('00000000'))
-
 
 class MyWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -304,16 +291,31 @@ class MyWindow(QtWidgets.QMainWindow):
         self.samplingline.setText("5")
         self.noiseline.setReadOnly(True)
         self.ODRline.setReadOnly(True)
+        self.statusLine.setReadOnly(True)
+
+        self.statusLine.setText("Disconnected")
 
         self.populateband()
+        self.refreshCOM()
 
         self.startButton.clicked.connect(self.startclick)
         self.paramButton.clicked.connect(self.setparam)
-        self.stopButton.clicked.connect(stop)
+        self.refreshButton.clicked.connect(self.refreshCOM)
+        self.conButton.clicked.connect(self.connect)
+        self.stopButton.clicked.connect(self.stop)
+        self.connstate(0)
+
+        self.samplingline.textChanged.connect(lambda: self.updatevar())
         self.samplingrline.currentTextChanged.connect(lambda: self.updatevar())
 
         # USED TO DETERMINE UNSAVED CHANGES
         self.updated = 0
+
+        # CONNECTION PARAMETERS
+        self.port = 0
+        self.baud = 115200
+        self.ser = None
+        self.connected = 0
 
         # USER SET IN SETTINGS
         self.bandwidth = 160
@@ -327,8 +329,46 @@ class MyWindow(QtWidgets.QMainWindow):
         self.ODR = 0
         self.noise = 0
 
+    def connstate(self, num):
+        if num == 0:
+            self.statusLine.setText("Disconnected")
+        else:
+            self.statusLine.setText("Connected")
+        self.Tabs.setTabEnabled(0, num)
+        self.connected = num
+
+    def connect(self):
+        self.port = self.comSel.currentData()
+        if self.port is None or self.port == 0:
+            return
+        if self.connected == 1:
+            try:
+                self.ser.close()
+                self.connstate(0)
+                return
+            except serial.SerialException as e:
+                self.connstate(0)
+        try:
+            self.ser = serial.Serial(str(self.port), self.baud)  # open serial port
+            self.connstate(1)
+
+        except serial.SerialException as e:
+            error = QMessageBox()
+            error.setIcon(QMessageBox.Warning)
+            error.setText("An error occurred when trying to connect.")
+            error.setWindowTitle("Systolic")
+            error.setDetailedText(f"{e}")
+            error.exec_()
+            self.connstate(0)
+            return
+
+    def refreshCOM(self):
+        self.comSel.clear()
+        availPorts = serial.tools.list_ports.comports()
+        for port, desc in sorted(availPorts):
+            self.comSel.addItem(desc, port)
+
     def updatevar(self):
-        print("Updated")
         self.updated = 1
 
     def populateband(self):
@@ -356,22 +396,27 @@ class MyWindow(QtWidgets.QMainWindow):
         self.noiseline.setText("%s uV" % self.noise)
         self.ODRline.setText("%s Hz" % self.ODR)
 
+    def stop(self):
+        sendData(CONFIG_Reg, bin_to_hex('00000000'), self.ser)
+
     def startclick(self):
         print(self.updated)
         if self.updated == 1:
-            ret = QMessageBox.question(self, 'Warning', "You have modified your sampling parameters but have not set them. Continue?", QMessageBox.Yes | QMessageBox.No)
+            ret = QMessageBox.question(self, 'Warning',
+                                       "You have modified your sampling parameters but have not set them. Continue?",
+                                       QMessageBox.Yes | QMessageBox.No)
             if ret == QMessageBox.No:
                 return
         print("ECG Measurement Init")
         self.upload()
-        ecg_read(int(self.ADCMax, 16), int(self.points))
+        ecg_read(int(self.ADCMax, 16), self.ser, int(self.points))
 
     def upload(self):
         print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
-        sendData(R2_Reg, self.R2)
-        sendData(R3CH1_Reg, self.R3)
-        sendData(R3CH2_Reg, self.R3)
-        sendData(R3CH3_Reg, self.R3)
+        sendData(R2_Reg, self.R2, self.ser)
+        sendData(R3CH1_Reg, self.R3, self.ser)
+        sendData(R3CH2_Reg, self.R3, self.ser)
+        sendData(R3CH3_Reg, self.R3, self.ser)
 
 
 if __name__ == '__main__':

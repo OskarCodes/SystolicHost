@@ -17,12 +17,12 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>Systolic</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QHBoxLayout" name="horizontalLayout">
     <item>
-     <widget class="QTabWidget" name="tabWidget">
+     <widget class="QTabWidget" name="Tabs">
       <property name="sizePolicy">
        <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
         <horstretch>0</horstretch>
@@ -36,11 +36,11 @@
        </size>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
-      <widget class="QWidget" name="Main">
+      <widget class="QWidget" name="Parameters">
        <attribute name="title">
-        <string>Main</string>
+        <string>Parameters</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_7">
         <item>
@@ -124,25 +124,84 @@
         </item>
        </layout>
       </widget>
+      <widget class="QWidget" name="Connection">
+       <attribute name="title">
+        <string>Connection</string>
+       </attribute>
+       <widget class="QGroupBox" name="ConnBox">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>0</y>
+          <width>241</width>
+          <height>181</height>
+         </rect>
+        </property>
+        <property name="title">
+         <string/>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout">
+         <item>
+          <widget class="QComboBox" name="comSel"/>
+         </item>
+         <item>
+          <widget class="QPushButton" name="refreshButton">
+           <property name="text">
+            <string>Refresh List</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="conButton">
+           <property name="text">
+            <string>Connect/Disconnect</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QGroupBox" name="groupBox">
+           <property name="title">
+            <string/>
+           </property>
+           <layout class="QGridLayout" name="gridLayout_3">
+            <item row="0" column="0">
+             <widget class="QLabel" name="label">
+              <property name="layoutDirection">
+               <enum>Qt::LeftToRight</enum>
+              </property>
+              <property name="text">
+               <string>Status:</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QLineEdit" name="statusLine"/>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
      </widget>
     </item>
    </layout>
-  </widget>
-  <widget class="QMenuBar" name="menubar">
-   <property name="geometry">
-    <rect>
-     <x>0</x>
-     <y>0</y>
-     <width>268</width>
-     <height>21</height>
-    </rect>
-   </property>
-   <widget class="QMenu" name="menuMain">
-    <property name="title">
-     <string>Main</string>
-    </property>
-   </widget>
-   <addaction name="menuMain"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
