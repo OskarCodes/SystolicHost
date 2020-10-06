@@ -305,8 +305,8 @@ class MyWindow(QtWidgets.QMainWindow):
         self.stopButton.clicked.connect(self.stop)
         self.connstate(0)
 
-        self.samplingline.textChanged.connect(lambda: self.updatevar())
-        self.samplingrline.currentTextChanged.connect(lambda: self.updatevar())
+        self.samplingline.textChanged.connect(self.updatevar)
+        self.samplingrline.currentTextChanged.connect(self.updatevar)
 
         # USED TO DETERMINE UNSAVED CHANGES
         self.updated = 0
