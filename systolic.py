@@ -33,11 +33,11 @@ def bin_to_hex(binaryin):
 def R2_to_Hex(x):
     if x == 4:
         return bin_to_hex('00000001')
-    elif x == 5:
+    if x == 5:
         return bin_to_hex('00000010')
-    elif x == 6:
+    if x == 6:
         return bin_to_hex('00000100')
-    elif x == 8:
+    if x == 8:
         return bin_to_hex('00001000')
 
 
