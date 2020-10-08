@@ -281,7 +281,10 @@ def valLookup(bw):
                 return row[0], row[1], row[2], row[3], row[6]
             x += 1
 
-
+# TODO: Add Waveform saving
+# TODO: Add Waveform loading
+# TODO: Add the ability to open a waveform when you close the window
+# TODO: Add sampling information into saved file (Sampling time, Bandwidth, etc.)
 
 class MyWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -365,7 +368,7 @@ class MyWindow(QtWidgets.QMainWindow):
     def refreshCOM(self):
         self.comSel.clear()
         availPorts = serial.tools.list_ports.comports()
-        for port, desc in sorted(availPorts):
+        for port, desc, hwid in sorted(availPorts):
             self.comSel.addItem(desc, port)
 
     def updatevar(self):
