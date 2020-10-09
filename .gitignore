@@ -1,3 +1,7 @@
+# Ignore my local folders
+plots
+.idea
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

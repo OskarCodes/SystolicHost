@@ -15,6 +15,10 @@ import csv
 import matplotlib.pyplot as plt
 from scipy import signal
 
+# These are the two files for if the ADS1293's SDM is running at 204.8 KHz or at 102.4 KHz
+# csv_file = 'csv/sampling_1024.csv'
+csv_file = 'csv/sampling_2048.csv'
+
 CONFIG_Reg = "0x00"
 R2_Reg = "0x21"
 R3CH1_Reg = "0x22"
@@ -270,7 +274,7 @@ def ecg_read(ADCMax, ser, DATA_LIM=500):
 
 
 def valLookup(bw):
-    with open('sampling.csv', newline='') as parameters:
+    with open(csv_file, newline='') as parameters:
         read = csv.reader(parameters, delimiter=',', quotechar='"')
         x = 0
         for row in read:
@@ -375,7 +379,7 @@ class MyWindow(QtWidgets.QMainWindow):
         self.updated = 1
 
     def populateband(self):
-        with open('sampling.csv', newline='') as parameters:
+        with open(csv_file, newline='') as parameters:
             read = csv.reader(parameters, delimiter=',', quotechar='"')
             x = 0
             last = 0
