@@ -30,6 +30,25 @@ AFE_Reg = '0x13'
 Filter_Reg = '0x26'
 
 
+def writeDataCSV(name, headers, data):
+    with open(name, 'wt', newline='') as csvObject:
+        csv_writer = csv.writer(csvObject, delimiter=',')
+        csv_writer.writerow(headers)  # write header
+        colsIndices = np.arange(len(data[0]))
+        rowsIndices = np.arange(len(data))
+        rowData = []
+        """
+        I know this is overcomplicating a simple task of iterating over 6 rows, however I wanted to do it this way
+        just incase in future I wanted to call this function with just three rows of data. It wouldn't be fun if
+        the function didn't work then!
+        """
+        for columnIndex in colsIndices:
+            for rowIndex in rowsIndices:
+                rowData.append(data[rowIndex][columnIndex])
+            csv_writer.writerow(rowData)
+            rowData = []
+
+
 def bin_to_hex(binaryin):
     hexb = hex(int(binaryin, 2))[2:]
     hexb = hexb.zfill(2)
@@ -251,6 +270,10 @@ def ecg_read(ADCMax, ser, DATA_LIM=500):
     y_vals[4] = signal.filtfilt(b_notch, a_notch, y_vals[4])
     y_vals[5] = signal.filtfilt(b_notch, a_notch, y_vals[5])
 
+    headers = ['Lead I', 'Lead II', 'Lead III', 'aVR', 'aVL', 'aVF']
+    data = y_vals
+    writeDataCSV('sample.csv', headers, data)
+
     ecg_plot.plot(y_vals, sample_rate=srate, title='ECG 6 Lead', columns=2)
     ecg_plot.show()
 
@@ -284,6 +307,7 @@ def valLookup(bw):
             if row[4] == bw:
                 return row[0], row[1], row[2], row[3], row[6]
             x += 1
+
 
 # TODO: Add Waveform saving
 # TODO: Add Waveform loading
