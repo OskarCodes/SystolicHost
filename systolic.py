@@ -30,7 +30,9 @@ AFE_Reg = '0x13'
 Filter_Reg = '0x26'
 
 
-def writeDataCSV(name, headers, data):
+def saveData(name, headers, data):
+    if data is None:
+        return
     with open(name, 'wt', newline='') as csvObject:
         csv_writer = csv.writer(csvObject, delimiter=',')
         csv_writer.writerow(headers)  # write header
@@ -164,14 +166,14 @@ def Filter_to_Hex(C1, C2, C3):
     return bin_to_hex(binary)
 
 
-def sendData(register, data, ser):
-    data = str(data)
+def sendData(register, rawData, ser):
+    rawData = str(rawData)
     register = str(register)
-    data = register + "," + data
-    data += "\r\n"
+    rawData = register + "," + rawData
+    data = rawData + "\r\n"
     try:
         ser.write(data.encode())
-        print("Sent: %s" % data)
+        print("Sent: %s" % rawData)
     except Exception as e:
         print("Serial port write failed \n")
         print("Flag: %s \n" % e)
@@ -225,11 +227,9 @@ def ecg_read(ADCMax, ser, DATA_LIM=500):
     xtick = 0
     for i in y_vals[0]:
         xtick += 1
-    print("Values: %s" % xtick)
     delta = end - start
     srate = xtick / delta
     print("Sampling Rate: %s" % srate)
-    print(delta)
     sendData(CONFIG_Reg, bin_to_hex('00000000'), ser)
     index = 0
     average_i = np.average(y_vals[0])
@@ -270,31 +270,12 @@ def ecg_read(ADCMax, ser, DATA_LIM=500):
     y_vals[4] = signal.filtfilt(b_notch, a_notch, y_vals[4])
     y_vals[5] = signal.filtfilt(b_notch, a_notch, y_vals[5])
 
-    headers = ['Lead I', 'Lead II', 'Lead III', 'aVR', 'aVL', 'aVF']
-    data = y_vals
-    writeDataCSV('sample.csv', headers, data)
+    return y_vals, samp_freq
 
-    ecg_plot.plot(y_vals, sample_rate=srate, title='ECG 6 Lead', columns=2)
+
+def viewData(waveforms, samplingRate, title='ECG 6 Lead'):
+    ecg_plot.plot(waveforms, sample_rate=samplingRate, title=title, columns=2)
     ecg_plot.show()
-
-    """sp = np.fft.fft(y_vals[0])
-    freq = np.fft.fftfreq(y_vals[0].shape[-1])
-    freq = freq * srate
-    data = sp.real
-
-    y_vals_notched = signal.filtfilt(b_notch, a_notch, y_vals[0])
-    sp2 = np.fft.fft(y_vals_notched)
-    freq2 = np.fft.fftfreq(y_vals_notched.shape[-1])
-    freq2 = freq2 * srate
-
-    fig, axs = plt.subplots(2)
-    fig.suptitle('FFT of ECG data with IIR notch 50 Hz')
-    axs[0].plot(abs(freq), abs(sp.real))
-    axs[1].plot(abs(freq), abs(sp2.real))
-    plt.show()"""
-
-    return 0
-
 
 def valLookup(bw):
     with open(csv_file, newline='') as parameters:
@@ -323,6 +304,8 @@ class MyWindow(QtWidgets.QMainWindow):
         self.noiseline.setReadOnly(True)
         self.ODRline.setReadOnly(True)
         self.statusLine.setReadOnly(True)
+        self.viewButton.setEnabled(False)
+        self.saveButton.setEnabled(False)
 
         self.statusLine.setText("Disconnected")
 
@@ -334,6 +317,7 @@ class MyWindow(QtWidgets.QMainWindow):
         self.refreshButton.clicked.connect(self.refreshCOM)
         self.conButton.clicked.connect(self.connect)
         self.stopButton.clicked.connect(self.stop)
+
         self.connstate(0)
 
         self.samplingline.textChanged.connect(self.updatevar)
@@ -347,6 +331,13 @@ class MyWindow(QtWidgets.QMainWindow):
         self.baud = 115200
         self.ser = None
         self.connected = 0
+
+        # ECG READ DATA & FUNCTIONS
+        self.waveforms = None
+        self.samplingRate = 0
+        self.headers = ['Lead I', 'Lead II', 'Lead III', 'aVR', 'aVL', 'aVF']
+        self.saveButton.clicked.connect(lambda: saveData('sample.csv', self.headers, self.waveforms))
+        self.viewButton.clicked.connect(lambda: viewData(self.waveforms, self.samplingRate))
 
         # USER SET IN SETTINGS
         self.bandwidth = 160
@@ -440,7 +431,12 @@ class MyWindow(QtWidgets.QMainWindow):
                 return
         print("ECG Measurement Init")
         self.upload()
-        ecg_read(int(self.ADCMax, 16), self.ser, int(self.points))
+        self.waveforms, self.samplingRate = ecg_read(int(self.ADCMax, 16), self.ser, int(self.points))
+
+        self.viewButton.setEnabled(True)
+        self.saveButton.setEnabled(True)
+
+        viewData(self.waveforms, self.samplingRate)
 
     def upload(self):
         print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
