@@ -12,7 +12,7 @@ import numpy as np
 from tqdm import tqdm
 import csv
 
-from configparser import ConfigParser
+from configparser import ConfigParser, NoOptionError
 
 # import matplotlib.pyplot as plt
 from scipy import signal
@@ -428,7 +428,7 @@ class MyWindow(QtWidgets.QMainWindow):
             try:
                 self.bandwidth = self.config.get('main', 'bandwidth')
                 self.time = self.config.get('main', 'time')
-            except:
+            except NoOptionError:
                 self.init_config()
             finally:
                 self.samplingline.clear()
