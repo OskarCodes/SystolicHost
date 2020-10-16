@@ -14,6 +14,10 @@ import csv
 
 import matplotlib.pyplot as plt
 from scipy import signal
+import scipy.signal as sig
+from scipy.signal import butter, lfilter
+
+from mathtools import mean_downscaler
 
 # These are the two files for if the ADS1293's SDM is running at 204.8 KHz or at 102.4 KHz
 # csv_file = 'csv/sampling_1024.csv'
@@ -28,6 +32,63 @@ CM_Reg = '0x0B'
 RLD_Reg = '0x0C'
 AFE_Reg = '0x13'
 Filter_Reg = '0x26'
+
+
+def butter_filter(order, Wn, type, fs, data):
+    sos = butter(order, Wn, btype=type, output='sos', fs=fs)
+    w, H = sig.sosfreqz(sos, fs=fs)
+    fData = signal.sosfilt(sos, data)
+    # return filteredData
+    return fData
+
+
+def pan_tompkins(waveform, fs, order=2):
+    """
+    :param waveform: Waveform data, Lead II is used
+    :type waveform: ndarray
+    :param fs: Sampling Frequency (Hz)
+    :type fs: float
+    :param order: Order of notch filter applied from 5-15 Hz
+    :type order: int
+    :return: Heart rate
+    :rtype: int
+    """
+    # Use Lead II
+    waveform = waveform[1]
+    # Calculate sampling time
+    sampleTime = len(waveform) / fs
+    # Firstly 5-15 Hz bandpass is applied
+    low = 5
+    high = 15
+    waveformFilt = butter_filter(order, [low, high], 'bandpass', fs, waveform)
+    # Derivative filter
+    waveformFilt = np.gradient(waveformFilt)
+    # Square signal
+    waveformFilt = waveformFilt ** 2
+    # Calculate moving average
+    sampleAmount = 0.15 * fs
+    waveformFilt = mean_downscaler(waveformFilt, sampleAmount)
+    plt.plot(waveformFilt)
+
+    """ 
+    If point in moving average is greater than 0.4, then it is a beat. Wait refractory period (well approximately in this case)
+    Right now I've gone the lazy way of just using a constant value to count as a beat, but in future I will do it properly
+    like discussed in the article I linked before.
+    """
+    beats = 0
+    refractory = 0
+    for i, x in enumerate(waveformFilt):
+        if x >= 0.06:
+            beats += 1
+            refractory = i
+        # I can't exactly wait 200 ms, so I have to just skip 1
+        if i == (refractory + 1):
+            continue
+
+    hRate = int(beats / sampleTime * 60)
+
+    # return hRate
+    return hRate
 
 
 def saveData(name, headers, data):
@@ -334,6 +395,7 @@ class MyWindow(QtWidgets.QMainWindow):
         # ECG READ DATA & FUNCTIONS
         self.waveforms = None
         self.samplingRate = 0
+        self.heartRate = 0
         self.headers = ['Lead I', 'Lead II', 'Lead III', 'aVR', 'aVL', 'aVF']
         self.saveButton.clicked.connect(lambda: saveData('sample.csv', self.headers, self.waveforms))
         self.viewButton.clicked.connect(lambda: viewData(self.waveforms, self.samplingRate))
@@ -434,8 +496,9 @@ class MyWindow(QtWidgets.QMainWindow):
 
         self.viewButton.setEnabled(True)
         self.saveButton.setEnabled(True)
-
+        self.heartRate = pan_tompkins(self.waveforms, self.samplingRate)
         viewData(self.waveforms, self.samplingRate)
+        print(self.heartRate)
 
     def upload(self):
         print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
