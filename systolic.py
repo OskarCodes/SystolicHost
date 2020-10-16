@@ -14,8 +14,7 @@ import csv
 
 import matplotlib.pyplot as plt
 from scipy import signal
-import scipy.signal as sig
-from scipy.signal import butter, lfilter
+from scipy.signal import butter
 
 from mathtools import mean_downscaler
 
@@ -34,9 +33,8 @@ AFE_Reg = '0x13'
 Filter_Reg = '0x26'
 
 
-def butter_filter(order, Wn, type, fs, data):
+def _butter_filter(order, Wn, type, fs, data):
     sos = butter(order, Wn, btype=type, output='sos', fs=fs)
-    w, H = sig.sosfreqz(sos, fs=fs)
     fData = signal.sosfilt(sos, data)
     # return filteredData
     return fData
@@ -60,7 +58,7 @@ def pan_tompkins(waveform, fs, order=2):
     # Firstly 5-15 Hz bandpass is applied
     low = 5
     high = 15
-    waveformFilt = butter_filter(order, [low, high], 'bandpass', fs, waveform)
+    waveformFilt = _butter_filter(order, [low, high], 'bandpass', fs, waveform)
     # Derivative filter
     waveformFilt = np.gradient(waveformFilt)
     # Square signal
@@ -448,7 +446,7 @@ class MyWindow(QtWidgets.QMainWindow):
     def refreshCOM(self):
         self.comSel.clear()
         availPorts = serial.tools.list_ports.comports()
-        for port, desc, hwid in sorted(availPorts):
+        for port, desc, _ in sorted(availPorts):
             self.comSel.addItem(desc, port)
 
     def updatevar(self):
