@@ -3,6 +3,9 @@ plots
 .idea
 sample.csv
 
+# Ignore my local config
+config.ini
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

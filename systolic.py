@@ -12,6 +12,8 @@ import numpy as np
 from tqdm import tqdm
 import csv
 
+from configparser import ConfigParser
+
 # import matplotlib.pyplot as plt
 from scipy import signal
 from scipy.signal import butter
@@ -350,7 +352,6 @@ class MyWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super(MyWindow, self).__init__()
         uic.loadUi("mainwindow.ui", self)
-
         self.samplingline.setText("5")
         self.noiseline.setReadOnly(True)
         self.ODRline.setReadOnly(True)
@@ -359,9 +360,6 @@ class MyWindow(QtWidgets.QMainWindow):
         self.saveButton.setEnabled(False)
 
         self.statusLine.setText("Disconnected")
-
-        self.populateband()
-        self.refreshCOM()
 
         self.startButton.clicked.connect(self.startclick)
         self.paramButton.clicked.connect(self.setparam)
@@ -391,7 +389,7 @@ class MyWindow(QtWidgets.QMainWindow):
         self.saveButton.clicked.connect(lambda: saveData('sample.csv', self.headers, self.waveforms))
         self.viewButton.clicked.connect(lambda: viewData(self.waveforms, self.samplingRate))
 
-        # USER SET IN SETTINGS
+        # SAMPLING PARAMETERS - USER SET. BELOW ARE THE DEFAULTS
         self.bandwidth = 160
         self.time = "5"
 
@@ -402,6 +400,42 @@ class MyWindow(QtWidgets.QMainWindow):
         self.ADCMax = "0x800000"
         self.ODR = 0
         self.noise = 0
+        self.odrArr = []
+
+        # MISCELLANEOUS PARAMETERS
+        self.configName = 'config.ini'
+
+        self.populateband()
+        self.refreshCOM()
+        self.config = ConfigParser()
+        self.load_config()
+
+    def init_config(self):
+        open(self.configName, 'w').close()
+        self.config = ConfigParser()
+        self.config.read(self.configName)
+        self.config.add_section('main')
+        self.config.set('main', 'bandwidth', str(self.bandwidth))
+        self.config.set('main', 'time', str(self.time))
+        with open('config.ini', 'w') as f:
+            self.config.write(f)
+
+    def load_config(self):
+        data = self.config.read(self.configName)
+        if len(data) == 0:
+            self.init_config()
+        else:
+            try:
+                self.bandwidth = self.config.get('main', 'bandwidth')
+                self.time = self.config.get('main', 'time')
+            except:
+                self.init_config()
+            finally:
+                self.samplingline.clear()
+                self.samplingline.insert(self.time)
+                index = np.where(np.array(self.odrArr) == self.bandwidth)
+                self.samplingrline.setCurrentIndex(int(index[0]))
+                self.setparam()
 
     def connstate(self, num):
         if num == 0:
@@ -458,6 +492,7 @@ class MyWindow(QtWidgets.QMainWindow):
                 if row[4] == last:
                     continue
                 last = row[4]
+                self.odrArr.append(row[4])
                 self.samplingrline.addItem(row[4] + " Hz", row[4])
 
     def setparam(self):
@@ -470,6 +505,11 @@ class MyWindow(QtWidgets.QMainWindow):
         self.R3 = R3_to_Hex(float(self.R3))
         self.noiseline.setText("%s uV" % self.noise)
         self.ODRline.setText("%s Hz" % self.ODR)
+
+        self.config.set('main', 'bandwidth', str(self.bandwidth))
+        self.config.set('main', 'time', str(self.time))
+        with open(self.configName, 'w') as f:
+            self.config.write(f)
 
     def stop(self):
         sendData(CONFIG_Reg, bin_to_hex('00000000'), self.ser)
