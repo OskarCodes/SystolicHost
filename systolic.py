@@ -33,7 +33,7 @@ AFE_Reg = '0x13'
 Filter_Reg = '0x26'
 
 
-def _butter_filter(order, Wn, type, fs, data):
+def sos_butter_filter(order, Wn, type, fs, data):
     sos = butter(order, Wn, btype=type, output='sos', fs=fs)
     fData = signal.sosfilt(sos, data)
     # return filteredData
@@ -58,7 +58,7 @@ def pan_tompkins(waveform, fs, order=2):
     # Firstly 5-15 Hz bandpass is applied
     low = 5
     high = 15
-    waveformFilt = _butter_filter(order, [low, high], 'bandpass', fs, waveform)
+    waveformFilt = sos_butter_filter(order, [low, high], 'bandpass', fs, waveform)
     # Derivative filter
     waveformFilt = np.gradient(waveformFilt)
     # Square signal
