@@ -12,15 +12,15 @@ import numpy as np
 from tqdm import tqdm
 import csv
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from scipy import signal
 from scipy.signal import butter
 
 from mathtools import mean_downscaler
 
-# These are the two files for if the ADS1293's SDM is running at 204.8 KHz or at 102.4 KHz
-# csv_file = 'csv/sampling_1024.csv'
-csv_file = 'csv/sampling_2048.csv'
+# These are the two files for if the ADS1293's SDM is running at 204.8 kHz or at 102.4 kHz
+# csv_file = 'csv/sampling_1024.csv' # 102.4 kHz
+csv_file = 'csv/sampling_2048.csv'  # 204.8 kHz
 
 CONFIG_Reg = "0x00"
 R2_Reg = "0x21"
@@ -33,8 +33,8 @@ AFE_Reg = '0x13'
 Filter_Reg = '0x26'
 
 
-def sos_butter_filter(order, Wn, type, fs, data):
-    sos = butter(order, Wn, btype=type, output='sos', fs=fs)
+def __butter_filter(order, Wn, filterType, fs, data):
+    sos = butter(order, Wn, btype=filterType, output='sos', fs=fs)
     fData = signal.sosfilt(sos, data)
     # return filteredData
     return fData
@@ -58,7 +58,7 @@ def pan_tompkins(waveform, fs, order=2):
     # Firstly 5-15 Hz bandpass is applied
     low = 5
     high = 15
-    waveformFilt = sos_butter_filter(order, [low, high], 'bandpass', fs, waveform)
+    waveformFilt = __butter_filter(order, [low, high], 'bandpass', fs, waveform)
     # Derivative filter
     waveformFilt = np.gradient(waveformFilt)
     # Square signal
@@ -66,13 +66,9 @@ def pan_tompkins(waveform, fs, order=2):
     # Calculate moving average
     sampleAmount = 0.15 * fs
     waveformFilt = mean_downscaler(waveformFilt, sampleAmount)
-    plt.plot(waveformFilt)
-
-    """ 
-    If point in moving average is greater than 0.4, then it is a beat. Wait refractory period (well approximately in this case)
-    Right now I've gone the lazy way of just using a constant value to count as a beat, but in future I will do it properly
-    like discussed in the article I linked before.
-    """
+    """If point in moving average is greater than 0.4, then it is a beat. Wait refractory period (well approximately 
+    in this case) Right now I've gone the lazy way of just using a constant value to count as a beat, but in future I 
+    will do it properly like discussed in the article I linked before. """
     beats = 0
     refractory = 0
     for i, x in enumerate(waveformFilt):
@@ -242,7 +238,7 @@ def hasNumbers(inputString):
     return any(char.isdigit() for char in inputString)
 
 
-def adcvoltage(rawdata, adcmax=0x800000):
+def adcVoltage(rawdata, adcmax=0x800000):
     try:
         rawdata = (float(rawdata) / adcmax)
     except:
@@ -273,9 +269,9 @@ def ecg_read(ADCMax, ser, DATA_LIM=500):
                     data = data.split(",")
                 except:
                     break
-                data[0] = adcvoltage(data[0], ADCMax)
-                data[1] = adcvoltage(data[1], ADCMax)
-                data[2] = adcvoltage(data[2], ADCMax)
+                data[0] = adcVoltage(data[0], ADCMax)
+                data[1] = adcVoltage(data[1], ADCMax)
+                data[2] = adcVoltage(data[2], ADCMax)
                 # print("Lead 1: %s, Lead 2: %s, Lead 3: %s" % (data[0], data[1], data[2]))
                 y_vals[0][i] = data[0]
                 y_vals[1][i] = data[1]
@@ -283,14 +279,11 @@ def ecg_read(ADCMax, ser, DATA_LIM=500):
                 # time.sleep(1/500)
                 break
     end = time.time()
-    xtick = 0
-    for i in y_vals[0]:
-        xtick += 1
+    pointNum = len(y_vals[0])
     delta = end - start
-    srate = xtick / delta
-    print("Sampling Rate: %s" % srate)
+    sRate = pointNum / delta
+    print("Sampling Rate: %s" % sRate)
     sendData(CONFIG_Reg, bin_to_hex('00000000'), ser)
-    index = 0
     average_i = np.average(y_vals[0])
     average_ii = np.average(y_vals[1])
     average_iii = np.average(y_vals[2])
@@ -310,7 +303,7 @@ def ecg_read(ADCMax, ser, DATA_LIM=500):
         y_vals[5][i] = y_vals[5][i] - average_aVF
 
     # Sample frequency (Hz)
-    samp_freq = srate
+    samp_freq = sRate
 
     # Frequency to be removed from signal (Hz)
     notch_freq = 50.0  # For usage in areas with 50 Hz mains power
@@ -428,6 +421,7 @@ class MyWindow(QtWidgets.QMainWindow):
                 self.connstate(0)
                 return
             except serial.SerialException as e:
+                print(e)
                 self.connstate(0)
         try:
             self.ser = serial.Serial(str(self.port), self.baud)  # open serial port
@@ -496,7 +490,7 @@ class MyWindow(QtWidgets.QMainWindow):
         self.saveButton.setEnabled(True)
         self.heartRate = pan_tompkins(self.waveforms, self.samplingRate)
         viewData(self.waveforms, self.samplingRate)
-        print(self.heartRate)
+        print(f"Heart rate: {self.heartRate}")
 
     def upload(self):
         print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
