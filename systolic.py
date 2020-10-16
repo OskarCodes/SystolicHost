@@ -277,6 +277,7 @@ def viewData(waveforms, samplingRate, title='ECG 6 Lead'):
     ecg_plot.plot(waveforms, sample_rate=samplingRate, title=title, columns=2)
     ecg_plot.show()
 
+
 def valLookup(bw):
     with open(csv_file, newline='') as parameters:
         read = csv.reader(parameters, delimiter=',', quotechar='"')
