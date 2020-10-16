@@ -290,9 +290,7 @@ def valLookup(bw):
             x += 1
 
 
-# TODO: Add Waveform saving
 # TODO: Add Waveform loading
-# TODO: Add the ability to open a waveform when you close the window
 # TODO: Add sampling information into saved file (Sampling time, Bandwidth, etc.)
 
 class MyWindow(QtWidgets.QMainWindow):
