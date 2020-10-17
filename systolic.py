@@ -1,3 +1,6 @@
+"""
+This is a program which acts as a controller and interpreter for my ultra-low-cost ECG Systolic.
+"""
 import sys
 import time
 
@@ -14,29 +17,28 @@ import csv
 
 from configparser import ConfigParser, NoOptionError, NoSectionError
 
-# import matplotlib.pyplot as plt
 from scipy import signal
 from scipy.signal import butter
 
 from mathtools import mean_downscaler
 
 # These are the two files for if the ADS1293's SDM is running at 204.8 kHz or at 102.4 kHz
-# csv_file = 'csv/sampling_1024.csv' # 102.4 kHz
-csv_file = 'csv/sampling_2048.csv'  # 204.8 kHz
+# CSV_FILE = 'csv/sampling_1024.csv' # 102.4 kHz
+CSV_FILE = 'csv/sampling_2048.csv'  # 204.8 kHz
 
-CONFIG_Reg = "0x00"
-R2_Reg = "0x21"
-R3CH1_Reg = "0x22"
-R3CH2_Reg = "0x23"
-R3CH3_Reg = "0x24"
-CM_Reg = '0x0B'
-RLD_Reg = '0x0C'
-AFE_Reg = '0x13'
-Filter_Reg = '0x26'
+CONFIG_REG = "0x00"
+R2_REG = "0x21"
+R3CH1_REG = "0x22"
+R3CH2_REG = "0x23"
+R3CH3_REG = "0x24"
+CM_REG = '0x0B'
+RLD_REG = '0x0C'
+AFE_REG = '0x13'
+FILTER_REG = '0x26'
 
 
-def __butter_filter(order, Wn, filterType, fs, data):
-    sos = butter(order, Wn, btype=filterType, output='sos', fs=fs)
+def __butter_filter(order, crit_freq, filter_type, sampling_freq, data):
+    sos = butter(order, crit_freq, btype=filter_type, output='sos', fs=sampling_freq)
     fData = signal.sosfilt(sos, data)
     # return filteredData
     return fData
@@ -66,32 +68,39 @@ def pan_tompkins(waveform, fs, order=2):
     # Square signal
     waveformFilt = waveformFilt ** 2
     # Calculate moving average
-    sampleAmount = 0.15 * fs
+    averageWindow = 0.15  # seconds
+    sampleAmount = int(averageWindow * fs)
     waveformFilt = mean_downscaler(waveformFilt, sampleAmount)
     """If point in moving average is greater than 0.4, then it is a beat. Wait refractory period (well approximately 
     in this case) Right now I've gone the lazy way of just using a constant value to count as a beat, but in future I 
-    will do it properly like discussed in the article I linked before. """
+    will do it properly like discussed in the  article I linked before. """
     beats = 0
     refractory = 0
+    xPoints = []
+    yPoints = []
     for i, x in enumerate(waveformFilt):
-        if x >= 0.06:
+        if (i + 1) >= len(waveformFilt):
+            break
+        if x > 0 and waveformFilt[i + 1] <= x and x > 0.002:
             beats += 1
             refractory = i
         # I can't exactly wait 200 ms, so I have to just skip 1
         if i == (refractory + 1):
             continue
-
-    hRate = int(beats / sampleTime * 60)
-
+    hRate = round(beats / sampleTime * 60)
     # return hRate
     return hRate
 
 
-def saveData(name, headers, data):
+def saveData(name, headers, data, samplingRate):
     if data is None:
         return
     with open(name, 'wt', newline='') as csvObject:
         csv_writer = csv.writer(csvObject, delimiter=',')
+        # Settings header
+        settings = ['samplingRate', samplingRate]
+        # Data headers
+        csv_writer.writerow(settings)
         csv_writer.writerow(headers)  # write header
         colsIndices = np.arange(len(data[0]))
         rowsIndices = np.arange(len(data))
@@ -108,8 +117,8 @@ def saveData(name, headers, data):
             rowData = []
 
 
-def bin_to_hex(binaryin):
-    hexb = hex(int(binaryin, 2))[2:]
+def bin_to_hex(binaryIn):
+    hexb = hex(int(binaryIn, 2))[2:]
     hexb = hexb.zfill(2)
     hexb = "0x" + hexb
     return hexb
@@ -256,7 +265,7 @@ def ecg_read(ADCMax, ser, DATA_LIM=500):
     DATA_LIM = round(DATA_LIM)
     stop = 0
     y_vals = np.empty([6, DATA_LIM])
-    sendData(CONFIG_Reg, bin_to_hex('00000001'), ser)
+    sendData(CONFIG_REG, bin_to_hex('00000001'), ser)
     time.sleep(1)
     ser.reset_input_buffer()
     start = time.time()
@@ -285,7 +294,7 @@ def ecg_read(ADCMax, ser, DATA_LIM=500):
     delta = end - start
     sRate = pointNum / delta
     print("Sampling Rate: %s" % sRate)
-    sendData(CONFIG_Reg, bin_to_hex('00000000'), ser)
+    sendData(CONFIG_REG, bin_to_hex('00000000'), ser)
     average_i = np.average(y_vals[0])
     average_ii = np.average(y_vals[1])
     average_iii = np.average(y_vals[2])
@@ -333,7 +342,7 @@ def viewData(waveforms, samplingRate, title='ECG 6 Lead'):
 
 
 def valLookup(bw):
-    with open(csv_file, newline='') as parameters:
+    with open(CSV_FILE, newline='') as parameters:
         read = csv.reader(parameters, delimiter=',', quotechar='"')
         x = 0
         for row in read:
@@ -345,32 +354,34 @@ def valLookup(bw):
             x += 1
 
 
-# TODO: Add Waveform loading
-# TODO: Add sampling information into saved file (Sampling time, Bandwidth, etc.)
-
-class MyWindow(QtWidgets.QMainWindow):
+class _ECGWindow(QtWidgets.QMainWindow):
     def __init__(self):
-        super(MyWindow, self).__init__()
+        super(_ECGWindow, self).__init__()
         uic.loadUi("mainwindow.ui", self)
-        self.samplingline.setText("5")
+
         self.noiseline.setReadOnly(True)
         self.ODRline.setReadOnly(True)
         self.statusLine.setReadOnly(True)
+        self.heartrateLine.setReadOnly(True)
         self.viewButton.setEnabled(False)
         self.saveButton.setEnabled(False)
+        self.analysisButton.setEnabled(False)
 
         self.statusLine.setText("Disconnected")
 
-        self.startButton.clicked.connect(self.startclick)
-        self.paramButton.clicked.connect(self.setparam)
-        self.refreshButton.clicked.connect(self.refreshCOM)
+        self.startButton.clicked.connect(self.start_sampling)
+        self.paramButton.clicked.connect(self.set_param)
+        self.refreshButton.clicked.connect(self.refresh_COM)
         self.conButton.clicked.connect(self.connect)
         self.stopButton.clicked.connect(self.stop)
+        self.saveButton.clicked.connect(lambda: saveData('sample.csv', self.headers, self.waveforms, self.samplingRate))
+        self.viewButton.clicked.connect(lambda: viewData(self.waveforms, self.samplingRate))
+        self.loadButton.clicked.connect(self.load_data)
+        self.analysisButton.clicked.connect(self.analysis)
+        self.samplingline.textChanged.connect(self.update_var)
+        self.samplingrline.currentTextChanged.connect(self.update_var)
 
-        self.connstate(0)
-
-        self.samplingline.textChanged.connect(self.updatevar)
-        self.samplingrline.currentTextChanged.connect(self.updatevar)
+        self.conn_state(0)
 
         # USED TO DETERMINE UNSAVED CHANGES
         self.updated = 0
@@ -382,18 +393,16 @@ class MyWindow(QtWidgets.QMainWindow):
         self.connected = 0
 
         # ECG READ DATA & FUNCTIONS
-        self.waveforms = None
+        self.waveforms = []
         self.samplingRate = 0
         self.heartRate = 0
         self.headers = ['Lead I', 'Lead II', 'Lead III', 'aVR', 'aVL', 'aVF']
-        self.saveButton.clicked.connect(lambda: saveData('sample.csv', self.headers, self.waveforms))
-        self.viewButton.clicked.connect(lambda: viewData(self.waveforms, self.samplingRate))
 
         # SAMPLING PARAMETERS - USER SET. BELOW ARE THE DEFAULTS
         self.bandwidth = 160
         self.time = "5"
 
-        # ADUSTED BASED ON BANDWIDTH AND TIME SETTINGS
+        # ADJUSTED BASED ON BANDWIDTH AND TIME SETTINGS
         self.R2 = 0x01
         self.R3 = 0x02
         self.points = 300
@@ -405,10 +414,43 @@ class MyWindow(QtWidgets.QMainWindow):
         # MISCELLANEOUS PARAMETERS
         self.configName = 'config.ini'
 
-        self.populateband()
-        self.refreshCOM()
+        # SETS TAB TO CONNECTION PAGE, FOR IF THE UI FILE IS SAVED AS TO HAVE ANOTHER TAB AS DEFAULT
+        self.Tabs.setCurrentIndex(2)
+
+        # FINAL FUNCTIONS TO SETUP WINDOW
+        self.populate_band()
+        self.refresh_COM()
         self.config = ConfigParser()
         self.load_config()
+
+    def analysis(self):
+        """
+        Wrapper for analysis functions, only contains heart rate calculation currently.
+        """
+        self.heartRate = pan_tompkins(self.waveforms, self.samplingRate)
+        self.heartrateLine.setText("%s bpm" % self.heartRate)
+
+    def load_data(self):
+        # Temporary filepath for my testing
+        path = 'cardiacwaveforms.csv'
+        with open(path, newline='') as csvfile:
+            dataReader = csv.reader(csvfile, delimiter=',', quotechar='|')
+            for i, row in enumerate(dataReader):
+                if i == 0:
+                    # Sampling settings
+                    self.samplingRate = float(row[1])
+                    continue
+                if i == 1:
+                    # Headers
+                    continue
+                row = list(map(float, row))
+                self.waveforms.append(row)
+        self.waveforms = np.array(self.waveforms)
+        # Transpose array as CSV data isn't in the preferred format
+        self.waveforms = self.waveforms.T
+        print("Data read")
+        self.viewButton.setEnabled(True)
+        self.analysisButton.setEnabled(True)
 
     def init_config(self):
         open(self.configName, 'w').close()
@@ -437,14 +479,14 @@ class MyWindow(QtWidgets.QMainWindow):
                 self.samplingline.insert(self.time)
                 index = np.where(np.array(self.odrArr) == self.bandwidth)
                 self.samplingrline.setCurrentIndex(int(index[0]))
-                self.setparam()
+                self.set_param()
 
-    def connstate(self, num):
+    def conn_state(self, num):
         if num == 0:
             self.statusLine.setText("Disconnected")
         else:
             self.statusLine.setText("Connected")
-        self.Tabs.setTabEnabled(0, num)
+        self.Tabs.setTabEnabled(1, num)
         self.connected = num
 
     def connect(self):
@@ -454,14 +496,14 @@ class MyWindow(QtWidgets.QMainWindow):
         if self.connected == 1:
             try:
                 self.ser.close()
-                self.connstate(0)
+                self.conn_state(0)
                 return
             except serial.SerialException as e:
                 print(e)
-                self.connstate(0)
+                self.conn_state(0)
         try:
             self.ser = serial.Serial(str(self.port), self.baud)  # open serial port
-            self.connstate(1)
+            self.conn_state(1)
 
         except serial.SerialException as e:
             error = QMessageBox()
@@ -470,26 +512,26 @@ class MyWindow(QtWidgets.QMainWindow):
             error.setWindowTitle("Systolic")
             error.setDetailedText(f"{e}")
             error.exec_()
-            self.connstate(0)
+            self.conn_state(0)
             return
 
-    def refreshCOM(self):
+    def refresh_COM(self):
         self.comSel.clear()
         availPorts = serial.tools.list_ports.comports()
         for port, desc, _ in sorted(availPorts):
             self.comSel.addItem(desc, port)
 
-    def updatevar(self):
+    def update_var(self):
         self.updated = 1
 
-    def populateband(self):
-        with open(csv_file, newline='') as parameters:
+    def populate_band(self):
+        with open(CSV_FILE, newline='') as parameters:
             read = csv.reader(parameters, delimiter=',', quotechar='"')
-            x = 0
+            start = False
             last = 0
             for row in read:
-                if x == 0:
-                    x = 1
+                if not start:
+                    start = True
                     continue
                 if row[4] == last:
                     continue
@@ -497,7 +539,7 @@ class MyWindow(QtWidgets.QMainWindow):
                 self.odrArr.append(row[4])
                 self.samplingrline.addItem(row[4] + " Hz", row[4])
 
-    def setparam(self):
+    def set_param(self):
         self.updated = 0
         self.time = self.samplingline.text()
         self.bandwidth = self.samplingrline.currentData()
@@ -505,6 +547,7 @@ class MyWindow(QtWidgets.QMainWindow):
         self.points = int(self.time) * int(self.ODR)
         self.R2 = R2_to_Hex(float(self.R2))
         self.R3 = R3_to_Hex(float(self.R3))
+
         self.noiseline.setText("%s uV" % self.noise)
         self.ODRline.setText("%s Hz" % self.ODR)
 
@@ -514,9 +557,9 @@ class MyWindow(QtWidgets.QMainWindow):
             self.config.write(f)
 
     def stop(self):
-        sendData(CONFIG_Reg, bin_to_hex('00000000'), self.ser)
+        sendData(CONFIG_REG, bin_to_hex('00000000'), self.ser)
 
-    def startclick(self):
+    def start_sampling(self):
         print(self.updated)
         if self.updated == 1:
             ret = QMessageBox.question(self, 'Warning',
@@ -530,20 +573,22 @@ class MyWindow(QtWidgets.QMainWindow):
 
         self.viewButton.setEnabled(True)
         self.saveButton.setEnabled(True)
-        self.heartRate = pan_tompkins(self.waveforms, self.samplingRate)
+        self.analysisButton.setEnabled(True)
         viewData(self.waveforms, self.samplingRate)
-        print(f"Heart rate: {self.heartRate}")
+        # Move user to sample tab
+        self.Tabs.setCurrentIndex(0)
+        self.analysis()
 
     def upload(self):
         print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
-        sendData(R2_Reg, self.R2, self.ser)
-        sendData(R3CH1_Reg, self.R3, self.ser)
-        sendData(R3CH2_Reg, self.R3, self.ser)
-        sendData(R3CH3_Reg, self.R3, self.ser)
+        sendData(R2_REG, self.R2, self.ser)
+        sendData(R3CH1_REG, self.R3, self.ser)
+        sendData(R3CH2_REG, self.R3, self.ser)
+        sendData(R3CH3_REG, self.R3, self.ser)
 
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
-    window = MyWindow()
+    window = _ECGWindow()
     window.show()
     sys.exit(app.exec())
