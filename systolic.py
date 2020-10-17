@@ -4,6 +4,9 @@ This is a program which acts as a controller and interpreter for my ultra-low-co
 import sys
 import time
 
+import csv
+from configparser import ConfigParser, NoOptionError, NoSectionError
+
 from PyQt5 import QtWidgets, uic
 from PyQt5.QtWidgets import QMessageBox
 
@@ -13,12 +16,9 @@ import serial.tools.list_ports
 import ecg_plot
 import numpy as np
 from tqdm import tqdm
-import csv
 
-from configparser import ConfigParser, NoOptionError, NoSectionError
 
 from scipy import signal
-from scipy.signal import butter
 
 from mathtools import mean_downscaler
 
@@ -38,18 +38,33 @@ FILTER_REG = '0x26'
 
 
 def __butter_filter(order, crit_freq, filter_type, sampling_freq, data):
-    sos = butter(order, crit_freq, btype=filter_type, output='sos', fs=sampling_freq)
-    fData = signal.sosfilt(sos, data)
+    """
+    Butter filter with adjustable type, etc.
+    :param order: Filter order
+    :type order: int
+    :param crit_freq: Critical frequencies (-3 dB points)
+    :type crit_freq: scalar or sequence (len 2)
+    :param filter_type: Type of filter, e.g. 'lowpass', 'highpass', 'bandpass', etc.
+    :type filter_type: string
+    :param sampling_freq: Sampling frequency
+    :type sampling_freq: float
+    :param data: Input data to be filtered
+    :type data: array
+    :return: Filtered data
+    :rtype: array
+    """
+    sos = signal.butter(order, crit_freq, btype=filter_type, output='sos', fs=sampling_freq)
+    f_data = signal.sosfilt(sos, data)
     # return filteredData
-    return fData
+    return f_data
 
 
-def pan_tompkins(waveform, fs, order=2):
+def pan_tompkins(waveform, sampling_freq, order=2):
     """
     :param waveform: Waveform data, Lead II is used
     :type waveform: ndarray
-    :param fs: Sampling Frequency (Hz)
-    :type fs: float
+    :param sampling_freq: Sampling Frequency (Hz)
+    :type sampling_freq: float
     :param order: Order of notch filter applied from 5-15 Hz
     :type order: int
     :return: Heart rate
@@ -58,103 +73,132 @@ def pan_tompkins(waveform, fs, order=2):
     # Use Lead II
     waveform = waveform[1]
     # Calculate sampling time
-    sampleTime = len(waveform) / fs
+    sample_time = len(waveform) / sampling_freq
     # Firstly 5-15 Hz bandpass is applied
     low = 5
     high = 15
-    waveformFilt = __butter_filter(order, [low, high], 'bandpass', fs, waveform)
+    waveform_filt = __butter_filter(order, [low, high], 'bandpass', sampling_freq, waveform)
     # Derivative filter
-    waveformFilt = np.gradient(waveformFilt)
+    waveform_filt = np.gradient(waveform_filt)
     # Square signal
-    waveformFilt = waveformFilt ** 2
+    waveform_filt = waveform_filt ** 2
     # Calculate moving average
-    averageWindow = 0.15  # seconds
-    sampleAmount = int(averageWindow * fs)
-    waveformFilt = mean_downscaler(waveformFilt, sampleAmount)
+    average_window = 0.15  # seconds
+    sample_amount = int(average_window * sampling_freq)
+    waveform_filt = mean_downscaler(waveform_filt, sample_amount)
     """If point in moving average is greater than 0.4, then it is a beat. Wait refractory period (well approximately 
     in this case) Right now I've gone the lazy way of just using a constant value to count as a beat, but in future I 
     will do it properly like discussed in the  article I linked before. """
     beats = 0
     refractory = 0
-    xPoints = []
-    yPoints = []
-    for i, x in enumerate(waveformFilt):
-        if (i + 1) >= len(waveformFilt):
+    for i, value in enumerate(waveform_filt):
+        if (i + 1) >= len(waveform_filt):
             break
-        if x > 0 and waveformFilt[i + 1] <= x and x > 0.002:
+        if value > 0 and waveform_filt[i + 1] <= value and value > 0.002:
             beats += 1
             refractory = i
         # I can't exactly wait 200 ms, so I have to just skip 1
         if i == (refractory + 1):
             continue
-    hRate = round(beats / sampleTime * 60)
-    # return hRate
-    return hRate
+    heart_rate = round(beats / sample_time * 60)
+    # return heart_rate
+    return heart_rate
 
 
-def saveData(name, headers, data, samplingRate):
+def save_data(name, headers, data, sampling_rate):
+    """
+    Saves ECG data to csv
+    :param name: File name for csv (include .csv)
+    :type name: string
+    :param headers: Headers for CSV (e.g. Lead I, Lead II, ...)
+    :type headers: list
+    :param data: ECG data
+    :type data: array
+    :param sampling_rate: Sampling rate
+    :type sampling_rate: float
+    """
     if data is None:
         return
-    with open(name, 'wt', newline='') as csvObject:
-        csv_writer = csv.writer(csvObject, delimiter=',')
+    with open(name, 'wt', newline='') as csv_object:
+        csv_writer = csv.writer(csv_object, delimiter=',')
         # Settings header
-        settings = ['samplingRate', samplingRate]
+        settings = ['sampling_rate', sampling_rate]
         # Data headers
         csv_writer.writerow(settings)
         csv_writer.writerow(headers)  # write header
-        colsIndices = np.arange(len(data[0]))
-        rowsIndices = np.arange(len(data))
-        rowData = []
+        cols_indices = np.arange(len(data[0]))
+        rows_indices = np.arange(len(data))
+        row_data = []
         """
         I know this is overcomplicating a simple task of iterating over 6 rows, however I wanted to do it this way
         just incase in future I wanted to call this function with just three rows of data. It wouldn't be fun if
         the function didn't work then!
         """
-        for columnIndex in colsIndices:
-            for rowIndex in rowsIndices:
-                rowData.append(data[rowIndex][columnIndex])
-            csv_writer.writerow(rowData)
-            rowData = []
+        for column_index in cols_indices:
+            for row_index in rows_indices:
+                row_data.append(data[row_index][column_index])
+            csv_writer.writerow(row_data)
+            row_data = []
 
 
-def bin_to_hex(binaryIn):
-    hexb = hex(int(binaryIn, 2))[2:]
+def bin_to_hex(binary_in):
+    print(type(binary_in))
+    """
+    Converts a binary input to a hexadecimal output
+    :param binary_in: Binary input
+    :type binary_in: string
+    :return: Hexadecimal output
+    :rtype: int
+    """
+    hexb = hex(int(binary_in, 2))[2:]
     hexb = hexb.zfill(2)
     hexb = "0x" + hexb
     return hexb
 
 
-def R2_to_Hex(x):
-    if x == 4:
+def R2_to_Hex(R2_val):
+    """
+    R2 Decimation filter input integer to output hexadecimal
+    """
+    if R2_val == 4:
         return bin_to_hex('00000001')
-    if x == 5:
+    if R2_val == 5:
         return bin_to_hex('00000010')
-    if x == 6:
+    if R2_val == 6:
         return bin_to_hex('00000100')
-    if x == 8:
+    if R2_val == 8:
         return bin_to_hex('00001000')
+    raise ValueError("Bad arguments")
 
 
-def R3_to_Hex(x):
-    if x == 4:
+def R3_to_Hex(R3_val):
+    """
+    R3 Decimation filter input integer to output hexadecimal
+    """
+    if R3_val == 4:
         return bin_to_hex('00000001')
-    if x == 6:
+    if R3_val == 6:
         return bin_to_hex('00000010')
-    if x == 8:
+    if R3_val == 8:
         return bin_to_hex('00000100')
-    if x == 12:
+    if R3_val == 12:
         return bin_to_hex('00001000')
-    if x == 16:
+    if R3_val == 16:
         return bin_to_hex('00010000')
-    if x == 32:
+    if R3_val == 32:
         return bin_to_hex('00100000')
-    if x == 64:
+    if R3_val == 64:
         return bin_to_hex('01000000')
-    if x == 128:
+    if R3_val == 128:
         return bin_to_hex('10000000')
+    # Not good!
+    raise ValueError("Bad arguments")
 
 
 def CM_to_Hex(bandwidth, drive):
+    """
+    Common-mode (CM) drive input bool and integer to hexadecimal output
+    """
     binary = '00000'
     if bandwidth:
         binary = binary + '1'
@@ -172,6 +216,9 @@ def CM_to_Hex(bandwidth, drive):
 
 
 def RLD_to_Hex(toggle, bandwidth, drive):
+    """
+    Right-leg-drive (RLD) integer and bool inputs to hexadecimal output
+    """
     binary = '0'
     if bandwidth:
         binary = binary + '1'
@@ -197,6 +244,9 @@ def RLD_to_Hex(toggle, bandwidth, drive):
 
 
 def AFE_to_Hex(C1, C2, C3):
+    """
+    Analog-front-end (AFE) bool inputs to hexadecimal output
+    """
     binary = '00'
     # Default Clock
     binary = binary + '000'
@@ -215,7 +265,10 @@ def AFE_to_Hex(C1, C2, C3):
     return bin_to_hex(binary)
 
 
-def Filter_to_Hex(C1, C2, C3):
+def filter_to_hex(C1, C2, C3):
+    """
+    Digital filter binary inputs to hexadecimal output
+    """
     binary = '00000'
     if C3:
         binary = binary + '0'
@@ -232,57 +285,93 @@ def Filter_to_Hex(C1, C2, C3):
     return bin_to_hex(binary)
 
 
-def sendData(register, rawData, ser):
-    rawData = str(rawData)
+def send_data(register, raw_data, ser):
+    """
+    Sends data to ECG in format 'register,data'
+    :param register: Register address
+    :type register: int (Hex)
+    :param raw_data: Data
+    :type raw_data: int (Hex)
+    :param ser: Serial object
+    :type ser: serial
+    """
+    raw_data = str(raw_data)
     register = str(register)
-    rawData = register + "," + rawData
-    data = rawData + "\r\n"
+    raw_data = register + "," + raw_data
+    data = raw_data + "\r\n"
     try:
         ser.write(data.encode())
-        print("Sent: %s" % rawData)
-    except Exception as e:
+        print("Sent: %s" % raw_data)
+    except Exception as what_went_wrong:
         print("Serial port write failed \n")
-        print("Flag: %s \n" % e)
+        print("Flag: %s \n" % what_went_wrong)
 
 
-def hasNumbers(inputString):
-    return any(char.isdigit() for char in inputString)
+def has_numbers(input_string):
+    """
+    This function returns a boolean representing if the input string contains a number
+    This is used in the ECG reading process
+    :param input_string: The input string
+    :type input_string: string
+    :return: Boolean representing if input has numbers
+    :rtype: bool
+    """
+    return any(char.isdigit() for char in input_string)
 
 
-def adcVoltage(rawdata, adcmax=0x800000):
+def adc_voltage(raw_data, adc_max=0x800000):
+    """
+    Function returns the analog voltage value converted from the digital received value
+    :param raw_data: digital output
+    :type raw_data: string
+    :param adc_max: This value is from the lookup table
+    :type adc_max: int
+    :return:
+    :rtype:
+    """
     try:
-        rawdata = (float(rawdata) / adcmax)
-    except:
+        raw_data = (float(raw_data) / adc_max)
+    except Exception as what_went_wrong:
+        print(what_went_wrong)
         return 0
-    rawdata = rawdata - (1 / 2)
-    rawdata = rawdata * 4.8
-    rawdata = rawdata / 3.5
-    return rawdata
+    raw_data -= (1 / 2)
+    raw_data *= 4.8
+    raw_data /= 3.5
+    return raw_data
 
 
-def ecg_read(ADCMax, ser, DATA_LIM=500):
-    # DATA_LIM = 160 * 5
-    DATA_LIM = round(DATA_LIM)
+def ecg_read(adc_max, ser, data_limit):
+    """
+    Reads data from ECG
+    :param adc_max: Value used to calculate voltage from adc output
+    :type adc_max: int (Hex)
+    :param ser: Serial object
+    :type ser: serial
+    :param data_limit: Amount of data to receive
+    :type data_limit: integer
+    """
+    data_limit = round(data_limit)
     stop = 0
-    y_vals = np.empty([6, DATA_LIM])
-    sendData(CONFIG_REG, bin_to_hex('00000001'), ser)
+    y_vals = np.empty([6, data_limit])
+    send_data(CONFIG_REG, bin_to_hex('00000001'), ser)
     time.sleep(1)
     ser.reset_input_buffer()
     start = time.time()
-    for i in tqdm(range(0, DATA_LIM)):
+    for i in tqdm(range(0, data_limit)):
         while not stop:
-            bytesToRead = ser.inWaiting()
-            data = ser.read(bytesToRead)
+            data_to_read = ser.inWaiting()
+            data = ser.read(data_to_read)
             data = data.decode('utf-8')
             data = data.strip()
-            if hasNumbers(data):
+            if has_numbers(data):
                 try:
                     data = data.split(",")
-                except:
+                except Exception as what_went_wrong:
+                    print(what_went_wrong)
                     break
-                data[0] = adcVoltage(data[0], ADCMax)
-                data[1] = adcVoltage(data[1], ADCMax)
-                data[2] = adcVoltage(data[2], ADCMax)
+                data[0] = adc_voltage(data[0], adc_max)
+                data[1] = adc_voltage(data[1], adc_max)
+                data[2] = adc_voltage(data[2], adc_max)
                 # print("Lead 1: %s, Lead 2: %s, Lead 3: %s" % (data[0], data[1], data[2]))
                 y_vals[0][i] = data[0]
                 y_vals[1][i] = data[1]
@@ -290,15 +379,15 @@ def ecg_read(ADCMax, ser, DATA_LIM=500):
                 # time.sleep(1/500)
                 break
     end = time.time()
-    pointNum = len(y_vals[0])
+    point_num = len(y_vals[0])
     delta = end - start
-    sRate = pointNum / delta
-    print("Sampling Rate: %s" % sRate)
-    sendData(CONFIG_REG, bin_to_hex('00000000'), ser)
+    sampling_rate = point_num / delta
+    print("Sampling Rate: %s" % sampling_rate)
+    send_data(CONFIG_REG, bin_to_hex('00000000'), ser)
     average_i = np.average(y_vals[0])
     average_ii = np.average(y_vals[1])
     average_iii = np.average(y_vals[2])
-    for i in range(0, DATA_LIM):
+    for i in range(0, data_limit):
         y_vals[0][i] = (y_vals[0][i] - average_i) * pow(10, 3)
         y_vals[1][i] = (y_vals[1][i] - average_ii) * pow(10, 3)
         y_vals[2][i] = (y_vals[2][i] - average_iii) * pow(10, 3)
@@ -308,13 +397,13 @@ def ecg_read(ADCMax, ser, DATA_LIM=500):
     average_aVR = np.average(y_vals[3])
     average_aVL = np.average(y_vals[4])
     average_aVF = np.average(y_vals[5])
-    for i in range(0, DATA_LIM):
+    for i in range(0, data_limit):
         y_vals[3][i] = y_vals[3][i] - average_aVR
         y_vals[4][i] = y_vals[4][i] - average_aVL
         y_vals[5][i] = y_vals[5][i] - average_aVF
 
     # Sample frequency (Hz)
-    samp_freq = sRate
+    samp_freq = sampling_rate
 
     # Frequency to be removed from signal (Hz)
     notch_freq = 50.0  # For usage in areas with 50 Hz mains power
@@ -336,27 +425,43 @@ def ecg_read(ADCMax, ser, DATA_LIM=500):
     return y_vals, samp_freq
 
 
-def viewData(waveforms, samplingRate, title='ECG 6 Lead'):
-    ecg_plot.plot(waveforms, sample_rate=samplingRate, title=title, columns=2)
+def view_data(waveforms, sampling_rate, title='ECG 6 Lead'):
+    """
+    Displays ECG data using the awesome ecg-plot package
+    :param waveforms: ECG Data
+    :type waveforms: array
+    :param sampling_rate: Sampling rate
+    :type sampling_rate: float
+    :param title: Title of plot
+    :type title: string
+    """
+    ecg_plot.plot(waveforms, sample_rate=sampling_rate, title=title, columns=2)
     ecg_plot.show()
 
 
-def valLookup(bw):
+def value_lookup(bandwidth):
+    """
+    Looks for corresponding values in lookup table when given a bandwidth value
+    :param bandwidth: Input val
+    :type bandwidth: string
+    :return: R2, R3, adc_max, ODR, noise
+    :rtype: string, string, string, string, string
+    """
     with open(CSV_FILE, newline='') as parameters:
         read = csv.reader(parameters, delimiter=',', quotechar='"')
-        x = 0
+        header = True
         for row in read:
-            if x == 0:
-                x = 1
+            if header:
+                header = False
                 continue
-            if row[4] == bw:
+            if row[4] == bandwidth:
                 return row[0], row[1], row[2], row[3], row[6]
-            x += 1
+    return None, None, None, None, None
 
 
 class _ECGWindow(QtWidgets.QMainWindow):
     def __init__(self):
-        super(_ECGWindow, self).__init__()
+        super().__init__()
         uic.loadUi("mainwindow.ui", self)
 
         self.noiseline.setReadOnly(True)
@@ -371,11 +476,12 @@ class _ECGWindow(QtWidgets.QMainWindow):
 
         self.startButton.clicked.connect(self.start_sampling)
         self.paramButton.clicked.connect(self.set_param)
-        self.refreshButton.clicked.connect(self.refresh_COM)
+        self.refreshButton.clicked.connect(self.refresh_com)
         self.conButton.clicked.connect(self.connect)
         self.stopButton.clicked.connect(self.stop)
-        self.saveButton.clicked.connect(lambda: saveData('sample.csv', self.headers, self.waveforms, self.samplingRate))
-        self.viewButton.clicked.connect(lambda: viewData(self.waveforms, self.samplingRate))
+        self.saveButton.clicked.connect(lambda: save_data('sample.csv', self.headers, self.waveforms,
+                                                          self.sampling_rate))
+        self.viewButton.clicked.connect(lambda: view_data(self.waveforms, self.sampling_rate))
         self.loadButton.clicked.connect(self.load_data)
         self.analysisButton.clicked.connect(self.analysis)
         self.samplingline.textChanged.connect(self.update_var)
@@ -394,8 +500,8 @@ class _ECGWindow(QtWidgets.QMainWindow):
 
         # ECG READ DATA & FUNCTIONS
         self.waveforms = []
-        self.samplingRate = 0
-        self.heartRate = 0
+        self.sampling_rate = 0
+        self.heart_rate = 0
         self.headers = ['Lead I', 'Lead II', 'Lead III', 'aVR', 'aVL', 'aVF']
 
         # SAMPLING PARAMETERS - USER SET. BELOW ARE THE DEFAULTS
@@ -406,20 +512,20 @@ class _ECGWindow(QtWidgets.QMainWindow):
         self.R2 = 0x01
         self.R3 = 0x02
         self.points = 300
-        self.ADCMax = "0x800000"
+        self.adc_max = "0x800000"
         self.ODR = 0
         self.noise = 0
-        self.odrArr = []
+        self.ODR_arr = []
 
         # MISCELLANEOUS PARAMETERS
-        self.configName = 'config.ini'
+        self.config_name = 'config.ini'
 
         # SETS TAB TO CONNECTION PAGE, FOR IF THE UI FILE IS SAVED AS TO HAVE ANOTHER TAB AS DEFAULT
         self.Tabs.setCurrentIndex(2)
 
         # FINAL FUNCTIONS TO SETUP WINDOW
         self.populate_band()
-        self.refresh_COM()
+        self.refresh_com()
         self.config = ConfigParser()
         self.load_config()
 
@@ -427,18 +533,21 @@ class _ECGWindow(QtWidgets.QMainWindow):
         """
         Wrapper for analysis functions, only contains heart rate calculation currently.
         """
-        self.heartRate = pan_tompkins(self.waveforms, self.samplingRate)
-        self.heartrateLine.setText("%s bpm" % self.heartRate)
+        self.heart_rate = pan_tompkins(self.waveforms, self.sampling_rate)
+        self.heartrateLine.setText("%s bpm" % self.heart_rate)
 
     def load_data(self):
+        """
+        Loads a selected .csv file into the ECG Window
+        """
         # Temporary filepath for my testing
         path = 'cardiacwaveforms.csv'
         with open(path, newline='') as csvfile:
-            dataReader = csv.reader(csvfile, delimiter=',', quotechar='|')
-            for i, row in enumerate(dataReader):
+            data_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+            for i, row in enumerate(data_reader):
                 if i == 0:
                     # Sampling settings
-                    self.samplingRate = float(row[1])
+                    self.sampling_rate = float(row[1])
                     continue
                 if i == 1:
                     # Headers
@@ -453,17 +562,23 @@ class _ECGWindow(QtWidgets.QMainWindow):
         self.analysisButton.setEnabled(True)
 
     def init_config(self):
-        open(self.configName, 'w').close()
+        """
+        Creates the config file, and deletes the existing one if possible
+        """
+        open(self.config_name, 'w').close()
         self.config = ConfigParser()
-        self.config.read(self.configName)
+        self.config.read(self.config_name)
         self.config.add_section('main')
         self.config.set('main', 'bandwidth', str(self.bandwidth))
         self.config.set('main', 'time', str(self.time))
-        with open('config.ini', 'w') as f:
-            self.config.write(f)
+        with open('config.ini', 'w') as config_file:
+            self.config.write(config_file)
 
     def load_config(self):
-        data = self.config.read(self.configName)
+        """
+        Loads an existing config file, and creates a new one if not possible.
+        """
+        data = self.config.read(self.config_name)
         if len(data) == 0:
             self.init_config()
         else:
@@ -477,11 +592,16 @@ class _ECGWindow(QtWidgets.QMainWindow):
             finally:
                 self.samplingline.clear()
                 self.samplingline.insert(self.time)
-                index = np.where(np.array(self.odrArr) == self.bandwidth)
+                index = np.where(np.array(self.ODR_arr) == self.bandwidth)
                 self.samplingrline.setCurrentIndex(int(index[0]))
                 self.set_param()
 
     def conn_state(self, num):
+        """
+        Updates the ECG Window based on the connection status
+        :param num: A boolean representing the connection state
+        :type num: bool
+        """
         if num == 0:
             self.statusLine.setText("Disconnected")
         else:
@@ -490,6 +610,9 @@ class _ECGWindow(QtWidgets.QMainWindow):
         self.connected = num
 
     def connect(self):
+        """
+        Connects or disconnects this program to Systolic
+        """
         self.port = self.comSel.currentData()
         if self.port is None or self.port == 0:
             return
@@ -498,33 +621,42 @@ class _ECGWindow(QtWidgets.QMainWindow):
                 self.ser.close()
                 self.conn_state(0)
                 return
-            except serial.SerialException as e:
-                print(e)
+            except serial.SerialException as exception:
+                print(exception)
                 self.conn_state(0)
         try:
             self.ser = serial.Serial(str(self.port), self.baud)  # open serial port
             self.conn_state(1)
 
-        except serial.SerialException as e:
+        except serial.SerialException as exception:
             error = QMessageBox()
             error.setIcon(QMessageBox.Warning)
             error.setText("An error occurred when trying to connect.")
             error.setWindowTitle("Systolic")
-            error.setDetailedText(f"{e}")
+            error.setDetailedText(f"{exception}")
             error.exec_()
             self.conn_state(0)
             return
 
-    def refresh_COM(self):
+    def refresh_com(self):
+        """
+        Refreshes the serial devices list on the window
+        """
         self.comSel.clear()
-        availPorts = serial.tools.list_ports.comports()
-        for port, desc, _ in sorted(availPorts):
+        avail_ports = serial.tools.list_ports.comports()
+        for port, desc, _ in sorted(avail_ports):
             self.comSel.addItem(desc, port)
 
     def update_var(self):
+        """
+        A function I just soley for updating the updated variable (haha)
+        """
         self.updated = 1
 
     def populate_band(self):
+        """
+        Populate the bandwidth dropdown with values from the csv lookup table
+        """
         with open(CSV_FILE, newline='') as parameters:
             read = csv.reader(parameters, delimiter=',', quotechar='"')
             start = False
@@ -536,14 +668,17 @@ class _ECGWindow(QtWidgets.QMainWindow):
                 if row[4] == last:
                     continue
                 last = row[4]
-                self.odrArr.append(row[4])
+                self.ODR_arr.append(row[4])
                 self.samplingrline.addItem(row[4] + " Hz", row[4])
 
     def set_param(self):
+        """
+        Gets the sampling parameters from the user's inputted values, and then writes them to config
+        """
         self.updated = 0
         self.time = self.samplingline.text()
         self.bandwidth = self.samplingrline.currentData()
-        self.R2, self.R3, self.ADCMax, self.ODR, self.noise = valLookup(self.bandwidth)
+        self.R2, self.R3, self.adc_max, self.ODR, self.noise = value_lookup(self.bandwidth)
         self.points = int(self.time) * int(self.ODR)
         self.R2 = R2_to_Hex(float(self.R2))
         self.R3 = R3_to_Hex(float(self.R3))
@@ -553,13 +688,20 @@ class _ECGWindow(QtWidgets.QMainWindow):
 
         self.config.set('main', 'bandwidth', str(self.bandwidth))
         self.config.set('main', 'time', str(self.time))
-        with open(self.configName, 'w') as f:
-            self.config.write(f)
+        with open(self.config_name, 'w') as config_file:
+            self.config.write(config_file)
 
     def stop(self):
-        sendData(CONFIG_REG, bin_to_hex('00000000'), self.ser)
+        """
+        Stops sampling of the ECG by sending stop command
+        """
+        send_data(CONFIG_REG, bin_to_hex('00000000'), self.ser)
 
     def start_sampling(self):
+        """
+        Starts sampling of the ECG by sending start command.
+        Then it initiates data receiving
+        """
         print(self.updated)
         if self.updated == 1:
             ret = QMessageBox.question(self, 'Warning',
@@ -569,22 +711,25 @@ class _ECGWindow(QtWidgets.QMainWindow):
                 return
         print("ECG Measurement Init")
         self.upload()
-        self.waveforms, self.samplingRate = ecg_read(int(self.ADCMax, 16), self.ser, int(self.points))
+        self.waveforms, self.sampling_rate = ecg_read(int(self.adc_max, 16), self.ser, int(self.points))
 
         self.viewButton.setEnabled(True)
         self.saveButton.setEnabled(True)
         self.analysisButton.setEnabled(True)
-        viewData(self.waveforms, self.samplingRate)
+        view_data(self.waveforms, self.sampling_rate)
         # Move user to sample tab
         self.Tabs.setCurrentIndex(0)
         self.analysis()
 
     def upload(self):
+        """
+        Uploads sampling parameters to Systolic
+        """
         print("Uploading decimation rates R2: %s R3: %s" % (self.R2, self.R3))
-        sendData(R2_REG, self.R2, self.ser)
-        sendData(R3CH1_REG, self.R3, self.ser)
-        sendData(R3CH2_REG, self.R3, self.ser)
-        sendData(R3CH3_REG, self.R3, self.ser)
+        send_data(R2_REG, self.R2, self.ser)
+        send_data(R3CH1_REG, self.R3, self.ser)
+        send_data(R3CH2_REG, self.R3, self.ser)
+        send_data(R3CH3_REG, self.R3, self.ser)
 
 
 if __name__ == '__main__':
