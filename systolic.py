@@ -54,7 +54,7 @@ def __butter_filter(order, critical_freq, filter_type, sampling_freq, data):
     """
     sos = signal.butter(order, critical_freq, btype=filter_type, output='sos', fs=sampling_freq)
     f_data = signal.sosfilt(sos, data)
-    # return filteredData
+    # return filtered data
     return f_data
 
 
@@ -329,8 +329,9 @@ def adc_voltage(raw_data, adc_max=0x800000):
     """
     try:
         raw_data = (float(raw_data) / adc_max)
-    except Exception as what_went_wrong:
-        print(what_went_wrong)
+    except ValueError:
+        # This often occurs with just the first piece of data.
+        # No real way I can fix it right now.
         return 0
     raw_data -= (1 / 2)
     raw_data *= 4.8
@@ -352,6 +353,7 @@ def ecg_read(adc_max, ser, data_limit):
     stop = 0
     y_vals = np.empty([6, data_limit])
     send_data(CONFIG_REG, bin_to_hex('00000001'), ser)
+    # Need to consider if this sleep below is actually needed
     time.sleep(1)
     ser.reset_input_buffer()
     start = time.time()
@@ -373,7 +375,6 @@ def ecg_read(adc_max, ser, data_limit):
                 y_vals[0][i] = data[0]
                 y_vals[1][i] = data[1]
                 y_vals[2][i] = data[2]
-                # time.sleep(1/500)
                 break
     end = time.time()
     point_num = len(y_vals[0])
@@ -618,14 +619,14 @@ class _ECGWindow(QtWidgets.QMainWindow):
         if self.connected == 1:
             try:
                 self.ser.close()
-                self.conn_state(0)
+                self.conn_state(False)
                 return
             except serial.SerialException as exception:
                 print(exception)
-                self.conn_state(0)
+                self.conn_state(False)
         try:
             self.ser = serial.Serial(str(self.port), self.baud)  # open serial port
-            self.conn_state(1)
+            self.conn_state(True)
 
         except serial.SerialException as exception:
             error = QMessageBox()
@@ -634,7 +635,7 @@ class _ECGWindow(QtWidgets.QMainWindow):
             error.setWindowTitle("Systolic")
             error.setDetailedText(f"{exception}")
             error.exec_()
-            self.conn_state(0)
+            self.conn_state(True)
             return
 
     def refresh_com(self):
