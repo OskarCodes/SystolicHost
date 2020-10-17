@@ -17,7 +17,6 @@ import ecg_plot
 import numpy as np
 from tqdm import tqdm
 
-
 from scipy import signal
 
 from mathtools import mean_downscaler
@@ -37,13 +36,13 @@ AFE_REG = '0x13'
 FILTER_REG = '0x26'
 
 
-def __butter_filter(order, crit_freq, filter_type, sampling_freq, data):
+def __butter_filter(order, critical_freq, filter_type, sampling_freq, data):
     """
     Butter filter with adjustable type, etc.
     :param order: Filter order
     :type order: int
-    :param crit_freq: Critical frequencies (-3 dB points)
-    :type crit_freq: scalar or sequence (len 2)
+    :param critical_freq: Critical frequencies (-3 dB points)
+    :type critical_freq: scalar or sequence (len 2)
     :param filter_type: Type of filter, e.g. 'lowpass', 'highpass', 'bandpass', etc.
     :type filter_type: string
     :param sampling_freq: Sampling frequency
@@ -53,7 +52,7 @@ def __butter_filter(order, crit_freq, filter_type, sampling_freq, data):
     :return: Filtered data
     :rtype: array
     """
-    sos = signal.butter(order, crit_freq, btype=filter_type, output='sos', fs=sampling_freq)
+    sos = signal.butter(order, critical_freq, btype=filter_type, output='sos', fs=sampling_freq)
     f_data = signal.sosfilt(sos, data)
     # return filteredData
     return f_data
@@ -142,7 +141,6 @@ def save_data(name, headers, data, sampling_rate):
 
 
 def bin_to_hex(binary_in):
-    print(type(binary_in))
     """
     Converts a binary input to a hexadecimal output
     :param binary_in: Binary input
@@ -372,7 +370,6 @@ def ecg_read(adc_max, ser, data_limit):
                 data[0] = adc_voltage(data[0], adc_max)
                 data[1] = adc_voltage(data[1], adc_max)
                 data[2] = adc_voltage(data[2], adc_max)
-                # print("Lead 1: %s, Lead 2: %s, Lead 3: %s" % (data[0], data[1], data[2]))
                 y_vals[0][i] = data[0]
                 y_vals[1][i] = data[1]
                 y_vals[2][i] = data[2]
@@ -380,9 +377,11 @@ def ecg_read(adc_max, ser, data_limit):
                 break
     end = time.time()
     point_num = len(y_vals[0])
-    delta = end - start
-    sampling_rate = point_num / delta
-    print("Sampling Rate: %s" % sampling_rate)
+    delta_time = end - start
+    sampling_rate = point_num / delta_time
+    print(f"Time taken = {delta_time}")
+    print(f"Time per sample = {delta_time/sampling_rate}")
+    print(f"Sampling rate = {sampling_rate}")
     send_data(CONFIG_REG, bin_to_hex('00000000'), ser)
     average_i = np.average(y_vals[0])
     average_ii = np.average(y_vals[1])
