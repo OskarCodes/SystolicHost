@@ -10,6 +10,8 @@ from configparser import ConfigParser, NoOptionError, NoSectionError
 from PyQt5 import QtWidgets, uic
 from PyQt5.QtWidgets import QMessageBox
 
+import matplotlib.pyplot as plt
+
 import serial
 import serial.tools.list_ports
 
@@ -58,8 +60,10 @@ def __butter_filter(order, critical_freq, filter_type, sampling_freq, data):
     return f_data
 
 
-def pan_tompkins(waveform, sampling_freq, order=2):
+def pan_tompkins(waveform, sampling_freq, order=2, plot=False):
     """
+    :param plot: Should a graph of the filtered ECG data be produced?
+    :type plot: bool
     :param waveform: Waveform data, Lead II is used
     :type waveform: ndarray
     :param sampling_freq: Sampling Frequency (Hz)
@@ -85,22 +89,36 @@ def pan_tompkins(waveform, sampling_freq, order=2):
     average_window = 0.15  # seconds
     sample_amount = int(average_window * sampling_freq)
     waveform_filt = mean_downscaler(waveform_filt, sample_amount)
-    """If point in moving average is greater than 0.4, then it is a beat. Wait refractory period (well approximately 
-    in this case) Right now I've gone the lazy way of just using a constant value to count as a beat, but in future I 
-    will do it properly like discussed in the  article I linked before. """
+    """
+    If point in moving average is greater than 0.4, then it is a beat.
+    Wait refractory period (approximately) Right now I've gone the lazy way
+    of just using a constant value to count as a beat, but in future I
+    will do it properly like discussed in the  article I linked before.
+    """
     beats = 0
     refractory = 0
+    # For plotting peak graph
+    x_vals = []
+    y_vals = []
     for i, value in enumerate(waveform_filt):
         if (i + 1) >= len(waveform_filt):
             break
         if value > 0 and waveform_filt[i + 1] <= value and value > 0.002:
+            x_vals.append(i)
+            y_vals.append(value)
             beats += 1
             refractory = i
         # I can't exactly wait 200 ms, so I have to just skip 1
         if i == (refractory + 1):
             continue
     heart_rate = round(beats / sample_time * 60)
-    # return heart_rate
+    if plot:
+        # Below is work in progress
+        # x_beats_on_normal = np.argsort(waveform)[::-1][:beats]
+        # y_beats_on_normal = list(map(lambda x: waveform[x], x_beats_on_normal))
+        plt.plot(waveform_filt)
+        plt.scatter(x_vals, y_vals, c='red', marker='x')
+        plt.show()
     return heart_rate
 
 
@@ -129,9 +147,9 @@ def save_data(name, headers, data, sampling_rate):
         rows_indices = np.arange(len(data))
         row_data = []
         """
-        I know this is overcomplicating a simple task of iterating over 6 rows, however I wanted to do it this way
-        just incase in future I wanted to call this function with just three rows of data. It wouldn't be fun if
-        the function didn't work then!
+        I know this is overcomplicating a simple task of iterating over 6 rows, however
+        I wanted to do it this way just incase in future I wanted to call this function
+        with just three rows of data. It wouldn't be fun if  the function didn't work then!
         """
         for column_index in cols_indices:
             for row_index in rows_indices:
@@ -297,12 +315,8 @@ def send_data(register, raw_data, ser):
     register = str(register)
     raw_data = register + "," + raw_data
     data = raw_data + "\r\n"
-    try:
-        ser.write(data.encode())
-        print("Sent: %s" % raw_data)
-    except Exception as what_went_wrong:
-        print("Serial port write failed \n")
-        print("Flag: %s \n" % what_went_wrong)
+    ser.write(data.encode())
+    print("Sent: %s" % raw_data)
 
 
 def has_numbers(input_string):
@@ -381,7 +395,7 @@ def ecg_read(adc_max, ser, data_limit):
     delta_time = end - start
     sampling_rate = point_num / delta_time
     print(f"Time taken = {delta_time}")
-    print(f"Time per sample = {delta_time/sampling_rate}")
+    print(f"Time per sample = {delta_time / sampling_rate}")
     print(f"Sampling rate = {sampling_rate}")
     send_data(CONFIG_REG, bin_to_hex('00000000'), ser)
     average_i = np.average(y_vals[0])
@@ -444,7 +458,7 @@ def value_lookup(bandwidth):
     Looks for corresponding values in lookup table when given a bandwidth value
     :param bandwidth: Input val
     :type bandwidth: string
-    :return: R2, R3, adc_max, ODR, noise
+    :return: R2, R3, adc_max, odr, noise
     :rtype: string, string, string, string, string
     """
     with open(CSV_FILE, newline='') as parameters:
@@ -479,7 +493,8 @@ class _ECGWindow(QtWidgets.QMainWindow):
         self.refreshButton.clicked.connect(self.refresh_com)
         self.conButton.clicked.connect(self.connect)
         self.stopButton.clicked.connect(self.stop)
-        self.saveButton.clicked.connect(lambda: save_data('sample.csv', self.headers, self.waveforms,
+        self.saveButton.clicked.connect(lambda: save_data('sample.csv', self.headers,
+                                                          self.waveforms,
                                                           self.sampling_rate))
         self.viewButton.clicked.connect(lambda: view_data(self.waveforms, self.sampling_rate))
         self.loadButton.clicked.connect(self.load_data)
@@ -513,9 +528,9 @@ class _ECGWindow(QtWidgets.QMainWindow):
         self.R3 = 0x02
         self.points = 300
         self.adc_max = "0x800000"
-        self.ODR = 0
+        self.odr = 0
         self.noise = 0
-        self.ODR_arr = []
+        self.odr_arr = []
 
         # MISCELLANEOUS PARAMETERS
         self.config_name = 'config.ini'
@@ -533,7 +548,7 @@ class _ECGWindow(QtWidgets.QMainWindow):
         """
         Wrapper for analysis functions, only contains heart rate calculation currently.
         """
-        self.heart_rate = pan_tompkins(self.waveforms, self.sampling_rate)
+        self.heart_rate = pan_tompkins(self.waveforms, self.sampling_rate, plot=True)
         self.heartrateLine.setText("%s bpm" % self.heart_rate)
 
     def load_data(self):
@@ -592,7 +607,7 @@ class _ECGWindow(QtWidgets.QMainWindow):
             finally:
                 self.samplingline.clear()
                 self.samplingline.insert(self.time)
-                index = np.where(np.array(self.ODR_arr) == self.bandwidth)
+                index = np.where(np.array(self.odr_arr) == self.bandwidth)
                 self.samplingrline.setCurrentIndex(int(index[0]))
                 self.set_param()
 
@@ -668,7 +683,7 @@ class _ECGWindow(QtWidgets.QMainWindow):
                 if row[4] == last:
                     continue
                 last = row[4]
-                self.ODR_arr.append(row[4])
+                self.odr_arr.append(row[4])
                 self.samplingrline.addItem(row[4] + " Hz", row[4])
 
     def set_param(self):
@@ -678,13 +693,13 @@ class _ECGWindow(QtWidgets.QMainWindow):
         self.updated = 0
         self.time = self.samplingline.text()
         self.bandwidth = self.samplingrline.currentData()
-        self.R2, self.R3, self.adc_max, self.ODR, self.noise = value_lookup(self.bandwidth)
-        self.points = int(self.time) * int(self.ODR)
+        self.R2, self.R3, self.adc_max, self.odr, self.noise = value_lookup(self.bandwidth)
+        self.points = int(self.time) * int(self.odr)
         self.R2 = R2_to_Hex(float(self.R2))
         self.R3 = R3_to_Hex(float(self.R3))
 
         self.noiseline.setText("%s uV" % self.noise)
-        self.ODRline.setText("%s Hz" % self.ODR)
+        self.ODRline.setText("%s Hz" % self.odr)
 
         self.config.set('main', 'bandwidth', str(self.bandwidth))
         self.config.set('main', 'time', str(self.time))
