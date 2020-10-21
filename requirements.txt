@@ -1,8 +1,8 @@
-ecg_plot==0.2.2
-scipy==1.5.2
-tqdm==4.50.0
 matplotlib==3.3.2
 numpy==1.19.2
+ecg_plot==0.2.2
+scipy==1.5.2
 pytest==6.1.1
+tqdm==4.50.0
 PyQt5==5.15.1
 pyserial==3.4

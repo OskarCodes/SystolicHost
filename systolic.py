@@ -548,7 +548,7 @@ class _ECGWindow(QtWidgets.QMainWindow):
         """
         Wrapper for analysis functions, only contains heart rate calculation currently.
         """
-        self.heart_rate = pan_tompkins(self.waveforms, self.sampling_rate, plot=True)
+        self.heart_rate = pan_tompkins(self.waveforms, self.sampling_rate)
         self.heartrateLine.setText("%s bpm" % self.heart_rate)
 
     def load_data(self):
