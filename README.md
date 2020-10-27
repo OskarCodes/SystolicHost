@@ -5,6 +5,11 @@ This program runs on the host device of the ECG and can configure and start/stop
 
 I'm still in the process of making more documentation and tests, so please let me know if you need any clarification on anything in the meantime.
 
+## What are the results like?
+Take a look, they're awesome, in my opinion!
+
+![ECG Sample was taken at 533 Hz](docs/images/ecg_sample_533hz.jpg)
+
 ## Setup
 ```shell
 git clone https://github.com/OskarCodes/SystolicHost.git
