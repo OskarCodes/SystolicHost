@@ -1,5 +1,5 @@
 # Systolic
-Master branch of code for host device of my ultra-low-cost ECG - Systolic. 
+Master branch of code for host device of my ultra-low-cost electrocardiogram (ECG): Systolic. 
 
 This program runs on the host device of the ECG and can configure and start/stop sampling of the ECG through a serial interface. It is made with Python and relies on PyQt for the GUI.
 
