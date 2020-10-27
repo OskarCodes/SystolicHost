@@ -1,6 +1,21 @@
 """
 This is a program which acts as a controller and interpreter for my ultra-low-cost ECG Systolic.
+
+This file is part of Systolic.
+Systolic is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+Systolic is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with Systolic.  If not, see https://www.gnu.org/licenses/.
 """
+
 import sys
 import time
 
@@ -54,9 +69,11 @@ def __butter_filter(order, critical_freq, filter_type, sampling_freq, data):
     :return: Filtered data
     :rtype: array
     """
+    # Create butter filter with sos output
     sos = signal.butter(order, critical_freq, btype=filter_type, output='sos', fs=sampling_freq)
+    # Apply sos parameters to input data
     f_data = signal.sosfilt(sos, data)
-    # return filtered data
+    # Return filtered data
     return f_data
 
 
@@ -73,6 +90,9 @@ def pan_tompkins(waveform, sampling_freq, order=2, plot=False):
     :return: Heart rate
     :rtype: int
     """
+    # Here I attempt to implement the Pan–Tompkins algorithm, as shown in:
+    # https://en.wikipedia.org/wiki/Pan%E2%80%93Tompkins_algorithm
+    # It is not complete as of now, e.g. there is no threshold calculation as of now
     # Use Lead II
     waveform = waveform[1]
     # Calculate sampling time
@@ -169,6 +189,7 @@ def bin_to_hex(binary_in):
     hexb = hex(int(binary_in, 2))[2:]
     hexb = hexb.zfill(2)
     hexb = "0x" + hexb
+    # Returns a hex output
     return hexb
 
 
@@ -313,8 +334,11 @@ def send_data(register, raw_data, ser):
     """
     raw_data = str(raw_data)
     register = str(register)
+    # Puts data into format as expected by the ECG
     raw_data = register + "," + raw_data
+    # Adds newline to not cause any issues
     data = raw_data + "\r\n"
+    # Encodes data and sends it to the ECG! Yay
     ser.write(data.encode())
     print("Sent: %s" % raw_data)
 
@@ -322,7 +346,7 @@ def send_data(register, raw_data, ser):
 def has_numbers(input_string):
     """
     This function returns a boolean representing if the input string contains a number
-    This is used in the ECG reading process
+    This is used in the ECG reading process, and is probably overcomplicating it.
     :param input_string: The input string
     :type input_string: string
     :return: Boolean representing if input has numbers
@@ -347,6 +371,8 @@ def adc_voltage(raw_data, adc_max=0x800000):
         # This often occurs with just the first piece of data.
         # No real way I can fix it right now.
         return 0
+    # Calculated voltage as shown by equation in ADS1293 datasheet (page 36 or 8.4.3):
+    # https://www.ti.com/lit/gpn/ads1293
     raw_data -= (1 / 2)
     raw_data *= 4.8
     raw_data /= 3.5
@@ -364,15 +390,18 @@ def ecg_read(adc_max, ser, data_limit):
     :type data_limit: integer
     """
     data_limit = round(data_limit)
-    stop = 0
+    run_enable = True
+    # Prepares array for reading
     y_vals = np.empty([6, data_limit])
+    # Sends sampling start command
     send_data(CONFIG_REG, bin_to_hex('00000001'), ser)
     # Need to consider if this sleep below is actually needed
     time.sleep(1)
     ser.reset_input_buffer()
     start = time.time()
     for i in tqdm(range(0, data_limit)):
-        while not stop:
+        # run_enable probably isn't needed
+        while run_enable:
             data_to_read = ser.inWaiting()
             data = ser.read(data_to_read)
             data = data.decode('utf-8')
@@ -391,23 +420,32 @@ def ecg_read(adc_max, ser, data_limit):
                 y_vals[2][i] = data[2]
                 break
     end = time.time()
-    point_num = len(y_vals[0])
+
+    data_amount = len(y_vals[0])
     delta_time = end - start
-    sampling_rate = point_num / delta_time
+    sampling_rate = data_amount / delta_time
+
+    # Definitely not needed, but good for testing!
     print(f"Time taken = {delta_time}")
     print(f"Time per sample = {delta_time / sampling_rate}")
     print(f"Sampling rate = {sampling_rate}")
+
+    # Sends sampling stop command
     send_data(CONFIG_REG, bin_to_hex('00000000'), ser)
+    # Calculates average of each of the three basic leads
     average_i = np.average(y_vals[0])
     average_ii = np.average(y_vals[1])
     average_iii = np.average(y_vals[2])
     for i in range(0, data_limit):
+        # Subtracts average from each point in lead
         y_vals[0][i] = (y_vals[0][i] - average_i) * pow(10, 3)
         y_vals[1][i] = (y_vals[1][i] - average_ii) * pow(10, 3)
         y_vals[2][i] = (y_vals[2][i] - average_iii) * pow(10, 3)
+        # Calculates augmented leads
         y_vals[3][i] = -1 * (float(y_vals[0][i]) + float(y_vals[1][i])) / 2  # aVR
         y_vals[4][i] = (float(y_vals[0][i]) - float(y_vals[1][i])) / 2  # aVL
         y_vals[5][i] = (float(y_vals[1][i]) - float(y_vals[0][i])) / 2  # aVF
+    # Same process as before, although I wonder if I can condense both while loops into one
     average_aVR = np.average(y_vals[3])
     average_aVL = np.average(y_vals[4])
     average_aVF = np.average(y_vals[5])
@@ -416,19 +454,20 @@ def ecg_read(adc_max, ser, data_limit):
         y_vals[4][i] = y_vals[4][i] - average_aVL
         y_vals[5][i] = y_vals[5][i] - average_aVF
 
-    # Sample frequency (Hz)
+    # Sampling frequency (Hz), set from calculated value
     samp_freq = sampling_rate
 
-    # Frequency to be removed from signal (Hz)
+    # Frequency to be removed from signal (Hz) in notch filter
     notch_freq = 50.0  # For usage in areas with 50 Hz mains power
     # notch_freq = 60.0 # For usage in areas with 60 Hz mains power
 
-    # Quality factor
+    # Quality factor of notch filter, not really sure what this does...
     quality_factor = 30.0
 
+    #TODO: See if I can get sos output for iirnotch instead of b,a
     b_notch, a_notch = signal.iirnotch(notch_freq, quality_factor, samp_freq)
 
-    # 50 Hz notch filter applied to all 6 leads
+    # Notch filter applied to all 6 leads at previously set frequency
     y_vals[0] = signal.filtfilt(b_notch, a_notch, y_vals[0])
     y_vals[1] = signal.filtfilt(b_notch, a_notch, y_vals[1])
     y_vals[2] = signal.filtfilt(b_notch, a_notch, y_vals[2])
@@ -449,6 +488,7 @@ def view_data(waveforms, sampling_rate, title='ECG 6 Lead'):
     :param title: Title of plot
     :type title: string
     """
+    # Uses the awesome ecg-plot library to display the waveforms
     ecg_plot.plot(waveforms, sample_rate=sampling_rate, title=title, columns=2)
     ecg_plot.show()
 
@@ -477,6 +517,7 @@ class _ECGWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         uic.loadUi("mainwindow.ui", self)
+        # So many things to initialize!
 
         self.noiseline.setReadOnly(True)
         self.ODRline.setReadOnly(True)
