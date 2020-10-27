@@ -18,6 +18,10 @@ pip install -r requirements.txt
 ```
 And you're done =)!
 
+To start the program, run ```systolic.py```
+
+The UI file ```mainwindow.ui``` can be modified in Qt Designer
+
 ## Contributing
 I immensely appreciate any contribution to this project, no matter the size. Please feel free to make a pull request! If you have any questions, please do not hesitate to reach out.
 
