@@ -1,7 +1,8 @@
 """
 This is a program which acts as a controller and interpreter for my ultra-low-cost ECG Systolic.
 
-This file is part of Systolic.
+Copyright 2020 OskarCodes
+This file is part of Systolic
 Systolic is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
